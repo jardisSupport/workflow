@@ -1,0 +1,48 @@
+{
+    "name": "jardissupport/workflow",
+    "description": "Workflow orchestration for PHP - Multi-step process execution with configurable transitions",
+    "version": "1.0.0",
+    "type": "library",
+    "license": "PolyForm-Noncommercial-1.0.0",
+    "minimum-stability": "stable",
+    "prefer-stable": true,
+    "authors": [
+        {
+            "name": "Jardis Development",
+            "email": "jardisDev@headgent.com"
+        }
+    ],
+    "require": {
+        "php": ">=8.2",
+        "jardisport/workflow": "^1.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.5",
+        "phpstan/phpstan": "^2.0.4",
+        "squizlabs/php_codesniffer": "^3.11.2"
+    },
+    "autoload": {
+        "psr-4": {
+            "JardisSupport\\Workflow\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "JardisSupport\\Workflow\\Tests\\": "tests/"
+        }
+    },
+    "homepage": "https://github.com/jardisSupport/workflow",
+    "support": {
+        "issues": "https://github.com/jardisSupport/workflow/issues",
+        "email": "jardisDev@headgent.com"
+    },
+    "keywords": [
+        "workflow",
+        "orchestration",
+        "state-machine",
+        "transitions",
+        "jardis",
+        "Headgent",
+        "php"
+    ]
+}
