@@ -12,13 +12,6 @@ help:
 	@egrep '^(.+):*\ ##\ (.+)' ${MAKEFILE_LIST} | column -t -c 2 -s ':#'
 .PHONY: help
 
-<---docker------->: ## -----------------------------------------------------------------------
-clean: ## Stop containers and clean up volumes
-	@echo "Cleaning up containers and volumes..."
-	@$(DOCKER_COMPOSE) down -v --remove-orphans
-	@echo "Cleanup complete."
-.PHONY: clean
-
 <---composer----->: ## -----------------------------------------------------------------------
 install: ## Run composer install
 	$(DOCKER_COMPOSE) run --rm --no-deps phpcli composer install --no-cache
@@ -41,6 +34,10 @@ phpunit-unit: ## Run unit tests only
 	$(DOCKER_COMPOSE) run --rm --no-deps phpcli vendor/bin/phpunit --testsuite "Unit Tests"
 .PHONY: phpunit-unit
 
+phpunit-reports: ## Run all tests with reports
+	$(DOCKER_COMPOSE) run --rm --no-deps -e PCOV_ENABLED=1 phpcli vendor/bin/phpunit --bootstrap ./tests/bootstrap.php /app/tests --coverage-clover tests/reports/clover.xml --coverage-xml tests/reports/coverage-xml
+.PHONY: phpunit-reports
+
 phpunit-coverage: ## Run all tests with coverage text
 	$(DOCKER_COMPOSE) run --rm --no-deps -e PCOV_ENABLED=1 phpcli vendor/bin/phpunit --bootstrap ./tests/bootstrap.php /app/tests --coverage-text
 .PHONY: phpunit-coverage
@@ -61,6 +58,26 @@ phpcs: ## Run coding standards
 shell: ## Run a shell inside the phpcli container
 	$(DOCKER_COMPOSE) run --rm --no-deps -it phpcli sh
 .PHONY: shell
+
+<---cleanup----->: ## -----------------------------------------------------------------------
+clean: ## Stop containers and clean up volumes
+	@echo "Cleaning up containers and volumes..."
+	@$(DOCKER_COMPOSE) down -v --remove-orphans
+	@echo "Cleanup complete."
+.PHONY: clean
+
+remove: ## Stops and removes containers, images, network and caches
+	@echo "Removing all Docker resources..."
+	@$(DOCKER_COMPOSE) down --volumes --remove-orphans --rmi "all"
+	@docker images --filter dangling=true -q 2>/dev/null | xargs -r docker rmi 2>/dev/null || true
+	@echo "Complete removal done."
+.PHONY: remove
+
+<---ssh -------->: ## -----------------------------------------------------------------------
+ssh-agent: ## Get SSH agent ready
+	eval `ssh-agent -s`
+	ssh-add
+.PHONY: ssh-agent
 
 <---hooks-------->: ## -----------------------------------------------------------------------
 install-hooks: ## Install git hooks (pre-commit + pre-push)
