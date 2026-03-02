@@ -1,7 +1,6 @@
 {
     "name": "jardissupport/workflow",
     "description": "Workflow orchestration for PHP - Multi-step process execution with configurable transitions",
-    "version": "1.0.0",
     "type": "library",
     "license": "PolyForm-Noncommercial-1.0.0",
     "minimum-stability": "stable",
@@ -23,12 +22,12 @@
     },
     "autoload": {
         "psr-4": {
-            "JardisSupport\\Workflow\\": "src/"
+            "JardisSupport\Workflow\": "src/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "JardisSupport\\Workflow\\Tests\\": "tests/"
+            "JardisSupport\Workflow\Tests\": "tests/"
         }
     },
     "homepage": "https://github.com/jardisSupport/workflow",
