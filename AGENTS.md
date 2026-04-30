@@ -1,0 +1,17 @@
+# jardissupport/workflow
+
+Multi-step orchestration: Handler chains via `WorkflowConfig`, status and named transitions, typed `WorkflowContext` propagated through the chain.
+
+## Usage essentials
+
+- **Two-class execution:** `$workflow = new Workflow();` or `new Workflow(fn(string $class) => $container->get($class))` (Factory for DI); call `$workflow($config, ...$params)` returns a `WorkflowContextInterface` carrying every handler invocation as an entry in an ordered execution log. Always starts at the first `addNode()` entry — the order of node registration determines the entry point.
+- **Handler contract is fixed:** Every handler has `__invoke(mixed ...$params): WorkflowResult` and MUST return `WorkflowResult` (otherwise `InvalidArgumentException`). The engine appends the `WorkflowContext` as the **last param** — `$context = end($params);` is the canonical idiom. The handler reaches its predecessor's result via `$context->getPrevious()`, any handler's most recent result via `$context->getLatest(SomeHandler::class)`, or all invocations of a handler via `$context->getAll(SomeHandler::class)`.
+- **Transition resolution in strict order:** 1) `hasExplicitTransition()` true if status is an `ON_*` value → `transitions[$transition]`; 2) otherwise `STATUS_SUCCESS` → `transitions[onSuccess]`; 3) otherwise `transitions[onFail]`. No next entry → stop. Named transitions (`ON_RETRY`, `ON_PENDING`, `ON_CANCEL`, …) always beat status routing.
+- **`WorkflowResult` as routing VO:** `new WorkflowResult(STATUS_SUCCESS, $data)` or `STATUS_FAIL, $errors` for standard routing; `new WorkflowResult(ON_RETRY, $data)` sets an explicit transition. Constants: `STATUS_SUCCESS`/`STATUS_FAIL`, plus `ON_SUCCESS`/`ON_FAIL`/`ON_ERROR`/`ON_TIMEOUT`/`ON_RETRY`/`ON_SKIP`/`ON_PENDING`/`ON_CANCEL`. Accessors: `getStatus()`, `getData()`, `getTransition()`, `hasExplicitTransition()`.
+- **`WorkflowContext` as ordered execution log:** Mutable DTO appended to each handler's params. `append()` pushes a new entry — re-invocations of the same handler (retry loops, cross-branch revisits) **never overwrite earlier entries**, so history is lossless. `getPrevious()` = immediate predecessor (null on first call); `getLatest($fqcn)` = most recent invocation of that handler; `getAll($fqcn)` = every invocation of that handler in execution order; `getChain()` = full ordered list of `array{handler: class-string, result: WorkflowResultInterface}` entries.
+- **Fluent Builder is the recommended config approach:** `(new WorkflowBuilder())->node(Class)->onSuccess(Next)->onFail(Other)->onRetry(Self)->node(Next)->build()` returns `WorkflowConfigInterface`. `WorkflowNodeBuilder` has 8 transition methods (`onSuccess`/`onFail`/`onError`/`onTimeout`/`onRetry`/`onSkip`/`onPending`/`onCancel`) plus `node()` and `build()`. Alternatively use `WorkflowConfig::addNode(Class, [ON_SUCCESS => Next, ON_FAIL => Other])` directly.
+- **Contract and Layer rule:** Public interfaces from `jardissupport/contract` (`WorkflowInterface`, `WorkflowConfigInterface`, `WorkflowContextInterface`, `WorkflowResultInterface`, `WorkflowBuilderInterface`, `WorkflowNodeBuilderInterface`). The Application Layer builds the config and starts the Workflow — **Domain never imports Workflow**. Handlers stay thin and delegate to domain services; `WorkflowResult` is a return type Contract, not a domain concept.
+
+## Full reference
+
+https://docs.jardis.io/en/support/workflow
