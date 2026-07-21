@@ -18,7 +18,7 @@ Directed workflow engine for multi-step process orchestration in PHP. Define han
 - **Directed Handler Graph** — connect handlers as nodes with explicit per-status transitions
 - **Seven Named Transitions** — `onSuccess`, `onFail`, `onTimeout`, `onSkip`, `onCancel`, `onEvent`, `onExit` (loop/block termination)
 - **R5 Routing-Safety** — when a transition target is not a registered node, the engine returns control to the caller (no dispatch, no exception)
-- **Opt-in Strict Routing** — `new WorkflowConfig(strictRouting: true)` requires every status a handler can emit to be a declared transition key; `'STATUS' => null` marks a deliberate terminal end, a missing key raises `UnroutedStatusException`. Default (`false`) preserves the non-strict v1.1.0 behaviour byte-for-byte
+- **Opt-in Strict Routing** — `new WorkflowConfig(strictRouting: true)` requires every status a handler can emit to be a declared transition key; `'STATUS' => null` marks a deliberate terminal end, a missing key raises `UnroutedStatusException`. Default (`false`) preserves the previous non-strict-routing default behaviour byte-for-byte
 - **Typed Execution Context** — `WorkflowContext` carries every handler invocation as an entry in an ordered execution log; `getPrevious()` exposes the immediate predecessor's result without the handler needing to know who that was
 - **Lossless History** — re-invocations of the same handler (retry loops, cross-branch revisits) append a new entry instead of overwriting; `getAll(Foo::class)` returns every invocation, `getLatest(Foo::class)` the most recent
 - **Fluent Builder API** — `WorkflowBuilder` + `WorkflowNodeBuilder` wire the graph without configuration arrays
@@ -137,7 +137,7 @@ $config->addNode(ChargePaymentHandler::class, [
 With `strictRouting: true`, every status a handler can emit must be a declared transition key
 for that node — `'onFail' => null` is a deliberate terminal end. A status with **no key at all**
 raises `UnroutedStatusException` (`getNode()` / `getStatus()`). Default is `false`, unchanged
-from v1.1.0: an unmapped status silently ends the run, and the R5 hand-off (a mapped target that
+from the pre-strict-routing default: an unmapped status silently ends the run, and the R5 hand-off (a mapped target that
 is not itself a registered node) stays legal either way.
 
 ## Documentation
