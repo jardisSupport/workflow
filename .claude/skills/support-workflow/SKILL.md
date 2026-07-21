@@ -26,7 +26,7 @@ Workflow(__invoke($config, $data = null, $context = null))
   → return WorkflowContextInterface
 ```
 
-Contracts: `jardissupport/contract` (`WorkflowInterface`, `WorkflowConfigInterface`, `WorkflowContextInterface`, `WorkflowResultInterface`, `WorkflowBuilderInterface`, `WorkflowNodeBuilderInterface`)
+Contracts: `jardissupport/contracts` (`WorkflowInterface`, `WorkflowConfigInterface`, `WorkflowContextInterface`, `WorkflowResultInterface`, `WorkflowBuilderInterface`, `WorkflowNodeBuilderInterface`)
 
 ## CLASSES
 | Class | Role |
