@@ -18,10 +18,7 @@ Workflow(__invoke($config, $data = null, $context = null))
   → context ??= new WorkflowContext()   // caller may inject one (e.g. a typed WorkflowState); engine returns it
   → nodes[0] handler → WorkflowResult (one of seven ON_* statuses)
   → context->append($fqcn, $result)   // pushes new entry; never overwrites
-  → determineNextHandler(result, config):
-      transitions = config->getTransitions($currentHandler)
-      next        = transitions[$result->getStatus()] ?? null
-      isRegisteredNode(next, config)? → next : null   // R5 routing-safety
+  → next handler resolved per the configured transition (R5 routing-safety, see below)
   → loop until no next node
   → return WorkflowContextInterface
 ```
@@ -34,7 +31,7 @@ Contracts: `jardissupport/contracts` (`WorkflowInterface`, `WorkflowConfigInterf
 | `Workflow` | Engine: pushes WorkflowContext into params, executes nodes, returns context |
 | `WorkflowConfig` | Node registry + transition maps; optional `strictRouting` opt-in (default `false`, see Builder section) |
 | `WorkflowContext` | Mutable ordered execution log; FQCN-keyed lookups via `getLatest`/`getAll` (implements `WorkflowContextInterface`) |
-| `WorkflowState<TPayload>` | Recommended typed state object for a process orchestrator: carries `payload → original → modified`; implements `WorkflowContextInterface` by delegating to an internal `WorkflowContext`, so it can be passed into the engine as `$context` |
+| `WorkflowState<TPayload>` | Recommended typed state object for a process orchestrator: carries `payload → original → modified`; implements `WorkflowContextInterface`, so it can be passed into the engine as `$context` (details below) |
 | `WorkflowResult` | VO: one of seven `ON_*` statuses + data (implements `WorkflowResultInterface`) |
 | `WorkflowBuilder` | Fluent config builder (implements `WorkflowBuilderInterface`) |
 | `WorkflowNodeBuilder` | Transition config per node (implements `WorkflowNodeBuilderInterface`) |
