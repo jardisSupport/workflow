@@ -4,8 +4,8 @@ description: jardissupport/workflow - Multi-step process orchestration. Use when
 user-invocable: false
 zone: post-active
 persona: C
-prerequisites: [rules-architecture, rules-patterns]
-next: [platform-workflow]
+prerequisites: [foundation-architecture, foundation-patterns]
+next: [generated-code-workflow-api]
 ---
 
 # WORKFLOW_COMPONENT_SKILL
