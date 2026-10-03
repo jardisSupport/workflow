@@ -74,7 +74,7 @@ use JardisSupport\Workflow\WorkflowResult;
 
 // Handler using named transitions (retry loop). All handlers share the same signature:
 // __invoke(WorkflowContextInterface): WorkflowResultInterface — per-run input is wired in
-// by the handler factory (e.g. injected via constructor or set as the BoundedContext payload).
+// by the handler factory (e.g. injected via constructor).
 class ChargePaymentHandler
 {
     public function __construct(private readonly Order $order) {}
