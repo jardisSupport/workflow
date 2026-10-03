@@ -23,10 +23,9 @@ use JardisSupport\Workflow\Exception\UnroutedStatusException;
  *
  * Handler instantiation is delegated to an optional factory closure that
  * receives both the FQCN and the optional per-run $data. A typical wiring
- * inside a BoundedContext spawns a fresh BC with $data as payload via
- * `$this->context($cls, $data)`, so handlers see $data via $this->payload();
- * when $data is null the factory falls back to `$this->handle($cls)` and
- * the outer payload is preserved.
+ * passes $data into the handler's constructor; when $data is null the factory
+ * builds the handler without per-run input. Without a factory the handler is
+ * created via `new $processClass()`.
  *
  * Routing is purely named: every transition is keyed by one of the seven ON_*
  * constants returned by the handler (onSuccess, onFail, onTimeout, onSkip,
