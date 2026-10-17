@@ -5,26 +5,3 @@ parameters:
     paths:
         - tests/Smoke
 
-    # Findings that sit in the GENERAT (copies of the builder goldens), not in the smoke code. They are listed
-    # here, not worked around: the fix belongs in the renderer, the entries go away with the next golden copy
-    # (an entry that no longer matches fails the run).
-    ignoreErrors:
-        -
-            # G1: the node's `$call` seam is declared but a body that does not call out never reads it
-            identifier: property.onlyWritten
-            paths:
-                - tests/Smoke/Fixture/OrderBulkQuote/Command/Handler/Action/PriceBulkQuote.php
-                - tests/Smoke/Fixture/RegisterAndReviseServiceOptOut/Command/Handler/Action/ReviseExistingService.php
-        -
-            # G2: the generator still emits `fn(string $class): callable => new $class(...)` - `new $class` is `object`;
-            # the package factory type is `\Closure(class-string): object` since E2-P2d, the golden needs `: object`
-            identifier: return.type
-            paths:
-                - tests/Smoke/Fixture/OrderBulkQuote/Command/Handler/OrderBulkQuoteHandler.php
-                - tests/Smoke/Fixture/RegisterAndReviseServiceOptOut/Command/Handler/RegisterAndReviseServiceOptOutHandler.php
-        -
-            # G3: `fn(string $h, object $d) => $this->handle($h, $d)` - handle() takes `class-string`
-            identifier: argument.type
-            paths:
-                - tests/Smoke/Fixture/OrderBulkQuote/Command/Handler/OrderBulkQuoteHandler.php
-                - tests/Smoke/Fixture/RegisterAndReviseServiceOptOut/Command/Handler/RegisterAndReviseServiceOptOutHandler.php

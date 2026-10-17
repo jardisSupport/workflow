@@ -1,6 +1,6 @@
 <?php
 
-// Copy of the E3-P3 golden (builder commit 6ea3fe0cd), see tests/Smoke/SmokeTest.php. Do not edit by hand.
+// Copy of the E3-P3 golden (builder commit 61b275eec), see tests/Smoke/SmokeTest.php. Do not edit by hand.
 declare(strict_types=1);
 
 namespace Ecommerce\Sales\Process\OrderBulkQuote\Command\Handler;

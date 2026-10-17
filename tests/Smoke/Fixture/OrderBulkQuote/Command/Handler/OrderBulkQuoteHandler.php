@@ -1,6 +1,6 @@
 <?php
 
-// Copy of the E3-P3 golden (builder commit 6ea3fe0cd), see tests/Smoke/SmokeTest.php. Do not edit by hand.
+// Copy of the E3-P3 golden (builder commit 61b275eec), see tests/Smoke/SmokeTest.php. Do not edit by hand.
 declare(strict_types=1);
 
 namespace Ecommerce\Sales\Process\OrderBulkQuote\Command\Handler;
@@ -31,7 +31,7 @@ final class OrderBulkQuoteHandler extends EcommerceContext
             $definition,
             $this->payload(),
             null,
-            fn(string $class): callable => new $class(fn(string $h, object $d) => $this->handle($h, $d))
+            fn(string $class): object => new $class($this->handle(...))
         );
         foreach ($outcome->events() as $event) {
             $this->result()->addEvent($event, EventScope::Domain);

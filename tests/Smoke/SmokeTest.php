@@ -25,7 +25,7 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * Smoke of the E3-P3 goldens: the generated process classes (copies under `Fixture/`, builder commit
- * 6ea3fe0cd) run as PHP against the working tree of the package - the real runner, the real validator,
+ * 61b275eec) run as PHP against the working tree of the package - the real runner, the real validator,
  * a fake kernel with a SQLite PDO. The node bodies are filled in the Fixture copy (the generat's stub
  * bodies throw); everything else of the generat is untouched.
  */

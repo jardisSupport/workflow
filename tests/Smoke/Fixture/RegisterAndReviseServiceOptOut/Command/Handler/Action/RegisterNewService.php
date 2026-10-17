@@ -1,6 +1,6 @@
 <?php
 
-// Copy of the E3-P3 golden (builder commit 6ea3fe0cd), see tests/Smoke/SmokeTest.php. Do not edit by hand.
+// Copy of the E3-P3 golden (builder commit 61b275eec), see tests/Smoke/SmokeTest.php. Do not edit by hand.
 // Only the body of __invoke() differs: it is the dev area of the node, filled for the smoke (stub: throws).
 declare(strict_types=1);
 
@@ -26,7 +26,7 @@ final class RegisterNewService
     /**
      * @param \Closure(class-string, object): DomainResponseInterface $call The kernel seam of the handler
      */
-    public function __construct(private readonly \Closure $call)
+    public function __construct(protected readonly \Closure $call)
     {
     }
 
