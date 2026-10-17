@@ -1,6 +1,6 @@
 ---
 name: support-workflow
-description: jardissupport/workflow 2.2 - process engine for one request-response use case. Declare a node graph with ProcessDefinition, run it with ProcessRunner, get a typed ProcessOutcome; NodeResult (ok, route, reject, withEvents), ProcessContext, start validation (400/401, field `messageKey`), transaction bracket with savepoints, four failure forms, 5xx cause logged, envelope data per answer (BuildResponseData, declaredMessageKey, input field paths). Use when working with ProcessRunner, ProcessDefinition, NodeResult, ProcessContext, BuildResponseData, declaredMessageKey, failure forms or jardissupport/workflow.
+description: jardissupport/workflow 2.3 - process engine for one request-response use case. Declare a node graph with ProcessDefinition, run it with ProcessRunner, get a typed ProcessOutcome; NodeResult (ok, route, reject, withEvents), ProcessContext, start validation (400/401, field `messageKey`), transaction bracket with savepoints, four failure forms, 5xx cause logged, envelope data per answer (BuildResponseData, declaredMessageKey, input field paths), sub-process node (MapOutcome). Use when working with ProcessRunner, ProcessDefinition, NodeResult, ProcessContext, BuildResponseData, declaredMessageKey, failure forms or jardissupport/workflow.
 user-invocable: false
 zone: post-active
 persona: C
@@ -9,11 +9,11 @@ next: [generated-code-workflow-api]
 ---
 
 # WORKFLOW_COMPONENT_SKILL
-> `jardissupport/workflow` 2.2 | NS: `JardisSupport\Workflow` | PHP 8.3+ | requires `jardissupport/contracts` ^2.12, `jardissupport/repository` ^1.6, `jardissupport/scheduling` ^1.2, `psr/log` ^3.0
+> `jardissupport/workflow` 2.3 | NS: `JardisSupport\Workflow` | PHP 8.3+ | requires `jardissupport/contracts` ^2.12, `jardissupport/repository` ^1.6, `jardissupport/scheduling` ^1.2, `psr/log` ^3.0
 
 ## Usage essentials
 
-**Trigger:** ProcessRunner, ProcessDefinition, NodeResult, ProcessContext, ProcessOutcome, declaredMessageKey, BuildResponseData, ReadResult, Reference, ValidationFailure, NotFound, Conflict, RuleViolation, MapResponse, MapThrowable, Bracket, RuleMode, `sp_{depth}`, `process.inputInvalid`.
+**Trigger:** ProcessRunner, ProcessDefinition, NodeResult, ProcessContext, ProcessOutcome, declaredMessageKey, BuildResponseData, ReadResult, Reference, ValidationFailure, NotFound, Conflict, RuleViolation, MapResponse, MapOutcome, MapThrowable, Bracket, RuleMode, `sp_{depth}`, `process.inputInvalid`.
 
 ```
 ProcessRunner::run($definition, $input, $actor, $nodeFactory, $parent = null)
@@ -61,6 +61,7 @@ $outcome->events();   // caller publishes these AFTER the run (committed)
 | `Reference` | `new Reference(root, children = [])`; `root children` |
 | `Failure\FailureForm` | `ValidationFailure(messageKey, fields[], context)`, `NotFound`, `Conflict(... reason, aggregate, violated)`, `RuleViolation(rule, messageKey, context)` |
 | `MapResponse` | `__invoke(DomainResponseInterface): NodeResult` (2xx ok, 4xx reject with the callee's plain context - `@type` dropped, inner `context` lifted, 400 `fields` / 409 `reason aggregate violated` / 422 `rule` kept; callee key only for 422; other 4xx e.g. 401/403: data unchanged as context; else throws) |
+| `MapOutcome` (`Handler/Node/`) | `__invoke(ProcessOutcome, ?Route $onReject = null, string $process = ''): NodeResult` - the sub-process node in one call: success `ok((array) response)` + all inner events; 4xx with `$onReject` `route($onReject)`, else `reject` with the SAME status and the inner failure form unpacked (400 `fields`, 409 `reason aggregate violated`, 422 `rule`, plain context) so the outer wire form equals the inner one; key: the inner node's declared key (422: its own), never a layer key; errors travel; 5xx throws `cause()` (without one a `RuntimeException` naming `$process` and the status) |
 | `CheckRequires` | `__invoke(DomainKernelInterface, list<string>): void` (called by the generated handler) |
 | `BuildResponseData` (`Handler/Response/`) | `__invoke(ProcessOutcome, string $processName): array` - the `data` of the envelope per answer form |
 | `TransformResponse` | `new TransformResponse(ClockInterface, string $version = '')`; `ContextResponse` -> `DomainResponse` |
@@ -95,7 +96,7 @@ An empty `context` encodes as `{}`. Dates: every `DateTimeInterface` in `data` (
 
 **Transaction (`Bracket`).** An exception stays the cause: rollback is issued only while `inTransaction()`, a failing rollback is dropped (`Bracket.php` `settle`). Opt-out `transactional(false)`: no bracket. Top-level run, none open: begin/commit-or-rollback. Transaction open (parent's or foreign): savepoint `sp_{depth}`, release on success, rollback-to on >= 400 or exception. Sub-process of a run without transaction: no bracket. A savepoint needs `SavepointInterface`, else `ConfigurationException` (500). Transactional process and no connection (`null`, kernel without database) -> `ConfigurationException` (500), key `process.connectionMissing`; opt-out runs without a connection.
 
-**Sub-process.** A node calls `$runner->run($inner, $input, $actor, $innerNodes, $context)` (parent = surrounding context), then maps the outcome: >= 500 throw `cause()`, >= 400 reject again or route (dev decision), else `ok((array) response)->withEvents(...$outcome->events())`.
+**Sub-process.** A node calls `$runner->run($inner, $input, $actor, $innerNodes, $context)` (parent = surrounding context) and hands the outcome to `(new MapOutcome())($outcome, $onReject, $inner->getName())` - never map it by hand: >= 500 throws `cause()`, >= 400 rejects again in the inner failure form (or routes `$onReject`, a dev decision), else `ok((array) response)->withEvents(...$outcome->events())` (`Handler/Node/MapOutcome.php`).
 
 **Rule modes.** `Guard` (default): a 422 reject ends the run. `Decision`: a 422 becomes `Route::OnFalse`, every other result unchanged (`ApplyRuleMode.php:35`).
 

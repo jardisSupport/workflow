@@ -409,7 +409,10 @@ class BracketTest extends TransactionTestCase
         $this->assertSame(ResponseStatus::ValidationError, $outcome->status());
         $form = $outcome->response();
         $this->assertInstanceOf(ValidationFailure::class, $form);
-        $this->assertSame('sub.rejected', $form->messageKey());
+        // 'sub.rejected' was a placeholder of the former test helper; MapOutcome names no key of its own and
+        // never lets the key of the inner start layer (process.inputInvalid) travel - the form keeps its fields.
+        $this->assertSame('', $form->messageKey());
+        $this->assertSame('customer', $form->fields()[0]['field']);
         $this->assertSame(['beginTransaction', 'rollback'], $this->connection->calls(), 'the inner run never got a bracket');
         $this->assertSame([], $this->ledger->notes());
     }

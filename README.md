@@ -341,6 +341,25 @@ $result->messageKey(); // ''
 $result->context();    // ['sku' => 'Z-9']
 ```
 
+### Sub-process nodes
+
+`MapOutcome` turns the `ProcessOutcome` of an inner run into the result of the node that called it, in one call: `(new MapOutcome())($outcome, ?Route $onReject = null, string $process = '')`.
+
+| Inner outcome | Node result |
+|---------------|-------------|
+| 2xx | `ok((array) response)` carrying **all** events of the inner run |
+| 4xx, `$onReject` given | `route($onReject)` - the dev decision to carry on |
+| 4xx, no `$onReject` | `reject` with the **same status** and the inner failure form unpacked (like `MapResponse`: 400 `fields`, 409 `reason`/`aggregate`/`violated`, 422 `rule`, the rest as plain context), so the outer answer has the same wire form |
+| 5xx | throws `cause()`; without a cause a `RuntimeException` naming `$process` and the status |
+
+The message key follows the same rule as `MapResponse`: the key the inner node declared (for a 422 the key of its own form) travels, the keys of the package's own layers (`process.inputInvalid`, ...) never do. The errors of the inner run travel on. A 400 additionally gets the field paths below the `input()` property of the calling node, like any other reject of that node.
+
+```php
+$outcome = $runner->run($inner, $input, $context->actor(), $innerNodes, $context);
+
+return (new MapOutcome())($outcome, onReject: null, process: 'NotifyMember');
+```
+
 ### Rule nodes
 
 A rule node is a normal node that rejects with `ResponseStatus::RuleViolation` (422) or goes on. `ruleMode()` decides how the process takes a violation:
@@ -513,13 +532,8 @@ final class ReleaseBatch
     public function __invoke(ProcessContext $context): NodeResult
     {
         $outcome = $this->runner->run($this->inner, $context->input(), $context->actor(), $this->innerNodes, $context);
-        $status = $outcome->status();
 
-        return match (true) {
-            $status->value >= 500 => throw ($outcome->cause() ?? new \RuntimeException('inner run failed')),
-            $status->value >= 400 => NodeResult::route(Route::OnFalse),
-            default => NodeResult::ok((array) $outcome->response())->withEvents(...$outcome->events()),
-        };
+        return (new MapOutcome())($outcome, Route::OnFalse, $this->inner->getName());
     }
 }
 
@@ -557,7 +571,7 @@ A process of another bounded context, called inside an open transaction, is a ru
 
 Events travel with the node result (`->withEvents(...)`); the package never sends them anywhere.
 
-- A successful run reports the events of all steps in execution order (`$outcome->events()`), including those a sub-process node passes up with `->withEvents(...$inner->events())`.
+- A successful run reports the events of all steps in execution order (`$outcome->events()`), including those a sub-process node passes up (`MapOutcome` carries them).
 - A rejected result carries no events; a run that ends in a reject or a failure reports none.
 - **The caller publishes after the commit.** The runner has already committed when `run()` returns:
 

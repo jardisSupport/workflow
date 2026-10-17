@@ -10,6 +10,7 @@ use JardisSupport\Workflow\Data\NodeResult;
 use JardisSupport\Workflow\Data\ProcessContext;
 use JardisSupport\Workflow\Data\ProcessDefinition;
 use JardisSupport\Workflow\Data\Route;
+use JardisSupport\Workflow\Handler\Node\MapOutcome;
 use JardisSupport\Workflow\ProcessRunner;
 use JardisSupport\Workflow\Tests\Support\Db\Ledger;
 use JardisSupport\Workflow\Tests\Support\Db\RecordingConnection;
@@ -81,9 +82,9 @@ abstract class TransactionTestCase extends TestCase
 
     /**
      * A sub-process node as the generated code writes it: it runs the inner process with the
-     * surrounding context as parent and maps the inner outcome to its own result - the events travel
-     * on, a 4xx is rejected again, a 5xx throws the cause, and `$onReject` (a dev decision) may route
-     * a 4xx instead.
+     * surrounding context as parent and maps the inner outcome with {@see MapOutcome} - the events
+     * travel on, a 4xx is rejected again in its form, a 5xx throws the cause, and `$onReject` (a dev
+     * decision) may route a 4xx instead.
      *
      * @param \Closure(class-string): object $innerNodes
      * @return callable(ProcessContext): NodeResult
@@ -97,17 +98,8 @@ abstract class TransactionTestCase extends TestCase
     ): callable {
         return static function (ProcessContext $context) use ($runner, $inner, $innerNodes, $onReject, $input): NodeResult {
             $outcome = $runner->run($inner, $input ?? new \stdClass(), null, $innerNodes, $context);
-            $status = $outcome->status();
-            if ($status->value >= 500) {
-                throw $outcome->cause() ?? new \RuntimeException('sub-process failed');
-            }
-            if ($status->value >= 400) {
-                return $onReject !== null
-                    ? NodeResult::route($onReject)
-                    : NodeResult::reject($status, 'sub.rejected', [], $outcome->errors());
-            }
 
-            return NodeResult::ok((array) $outcome->response())->withEvents(...$outcome->events());
+            return (new MapOutcome())($outcome, $onReject, $inner->getName());
         };
     }
 }
