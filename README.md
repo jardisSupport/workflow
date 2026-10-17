@@ -451,6 +451,8 @@ return (new TransformResponse(new SystemClock(), $this->version()))($this->resul
 
 An empty `context` encodes as `{}`. The context keys the 400 form does not know are not part of its answer.
 
+**Dates on the wire.** A `DateTimeInterface` anywhere in `data` (a response field, nested arrays and plain objects, a reject context) goes out as an RFC 3339 string (`DateTimeInterface::ATOM`, e.g. `2026-10-17T12:30:45+02:00`, keeping the value's own offset), never as json_encode's `{date, timezone_type, timezone}`; `null` stays `null`, `JsonSerializable` values and enums keep their own form.
+
 **Message key in `data`.** The key a node declares for a 4xx status with `rejects(status, key)` wins; without a declaration it is the key the node names with its `reject`. That *declared* key (`ProcessOutcome::declaredMessageKey()`) joins the `data` of every 4xx as the last member (the 422 form carries it at its own place and the declared key replaces it there), an empty key names none. A reject passed through a call node (`MapResponse`) therefore answers the declared key of its node, and for 400, 404 and 409 only that one. The keys of the package's own layers (`process.inputInvalid`, `process.actorMissing`, `process.transientConflict`) are never declared and never reach `data`.
 
 **Field paths.** The input check answers its paths below the input root (`customer`, `items[1].qty`). A node fed by one input property declares it with `input('customer')`; a 400 reject of that node answers its findings as `customer.<field>`.
@@ -482,7 +484,7 @@ $reference->children(); // ['lines' => ['L-1', 'L-2']]
 | a transaction is open (the surrounding run's, or somebody else's) | works in a savepoint `sp_{depth}`; never starts a transaction |
 | sub-process of a run without a transaction | no bracket |
 
-A success commits (releases the savepoint). An answer of 400 and above, or an exception, rolls back (to the savepoint); an exception is thrown on to `MapThrowable`. A savepoint needs a connection that implements `SavepointInterface`, otherwise the run ends with 500 (`ConfigurationException`).
+A success commits (releases the savepoint). An answer of 400 and above, or an exception, rolls back (to the savepoint); an exception is thrown on to `MapThrowable` and stays the cause: a rollback is only issued while a transaction is open (a node may have ended it, or the database an implicit commit), and a failing rollback does not replace the original error. A savepoint needs a connection that implements `SavepointInterface`, otherwise the run ends with 500 (`ConfigurationException`).
 
 **Sub-process.** A node runs an inner process with the surrounding context as parent. The inner run works in `sp_1`; if it rejects, only its writes are rolled back and the outer node decides — reject again, or route on:
 
