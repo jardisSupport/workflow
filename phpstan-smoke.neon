@@ -16,7 +16,8 @@ parameters:
                 - tests/Smoke/Fixture/OrderBulkQuote/Command/Handler/Action/PriceBulkQuote.php
                 - tests/Smoke/Fixture/RegisterAndReviseServiceOptOut/Command/Handler/Action/ReviseExistingService.php
         -
-            # G2: `fn(string $class): callable => new $class(...)` - `new $class` is `object`, not `callable`
+            # G2: the generator still emits `fn(string $class): callable => new $class(...)` - `new $class` is `object`;
+            # the package factory type is `\Closure(class-string): object` since E2-P2d, the golden needs `: object`
             identifier: return.type
             paths:
                 - tests/Smoke/Fixture/OrderBulkQuote/Command/Handler/OrderBulkQuoteHandler.php

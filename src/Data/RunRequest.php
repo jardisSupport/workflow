@@ -13,7 +13,7 @@ namespace JardisSupport\Workflow\Data;
 final readonly class RunRequest
 {
     /**
-     * @param \Closure(class-string): (callable(ProcessContext): NodeResult) $nodeFactory
+     * @param \Closure(class-string): object $nodeFactory
      */
     private function __construct(
         public ProcessDefinition $definition,
@@ -28,7 +28,7 @@ final readonly class RunRequest
     /**
      * The depth is derived: one deeper than the surrounding run, 0 without one.
      *
-     * @param \Closure(class-string): (callable(ProcessContext): NodeResult) $nodeFactory
+     * @param \Closure(class-string): object $nodeFactory
      */
     public static function of(
         ProcessDefinition $definition,

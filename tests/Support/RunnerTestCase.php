@@ -27,11 +27,11 @@ abstract class RunnerTestCase extends TestCase
     /**
      * @param array<string, callable(ProcessContext): NodeResult> $nodes node class => node callable
      * @param list<string> $built classes in the order the runner asked for them
-     * @return \Closure(class-string): (callable(ProcessContext): NodeResult)
+     * @return \Closure(class-string): object
      */
     protected function factory(array $nodes, array &$built = []): \Closure
     {
-        return static function (string $class) use ($nodes, &$built): callable {
+        return static function (string $class) use ($nodes, &$built): object {
             $built[] = $class;
 
             return $nodes[$class] ?? throw new \LogicException('no node registered for ' . $class);

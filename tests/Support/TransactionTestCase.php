@@ -39,11 +39,11 @@ abstract class TransactionTestCase extends TestCase
     /**
      * @param array<string, callable(ProcessContext): NodeResult> $nodes
      * @param list<string> $built
-     * @return \Closure(class-string): (callable(ProcessContext): NodeResult)
+     * @return \Closure(class-string): object
      */
     protected function factory(array $nodes, array &$built = []): \Closure
     {
-        return static function (string $class) use ($nodes, &$built): callable {
+        return static function (string $class) use ($nodes, &$built): object {
             $built[] = $class;
 
             return $nodes[$class] ?? throw new \LogicException('no node registered for ' . $class);
@@ -85,7 +85,7 @@ abstract class TransactionTestCase extends TestCase
      * on, a 4xx is rejected again, a 5xx throws the cause, and `$onReject` (a dev decision) may route
      * a 4xx instead.
      *
-     * @param \Closure(class-string): (callable(ProcessContext): NodeResult) $innerNodes
+     * @param \Closure(class-string): object $innerNodes
      * @return callable(ProcessContext): NodeResult
      */
     protected function subProcess(

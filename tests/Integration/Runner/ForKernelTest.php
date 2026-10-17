@@ -39,11 +39,11 @@ class ForKernelTest extends TestCase
     }
 
     /**
-     * @return \Closure(class-string): (callable(ProcessContext): NodeResult)
+     * @return \Closure(class-string): object
      */
     private function writer(Ledger $ledger, bool $reject = false): \Closure
     {
-        return static fn(string $class): callable => static function (ProcessContext $context) use ($ledger, $reject): NodeResult {
+        return static fn(string $class): object => static function (ProcessContext $context) use ($ledger, $reject): NodeResult {
             $ledger->add('row');
 
             return $reject ? NodeResult::reject(ResponseStatus::RuleViolation, 'p.rule') : NodeResult::ok(['k' => 'v']);

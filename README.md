@@ -137,7 +137,7 @@ final class PlaceOrderRules
 
 ### Nodes
 
-A node is any `callable(ProcessContext): NodeResult`. The runner asks the node factory for it when the node is due, by the name the definition declares (in generated code a class name).
+A node is any `callable(ProcessContext): NodeResult`. The runner asks the node factory for it when the node is due, by the name the definition declares (in generated code a class name). The factory is `\Closure(class-string): object` - it only constructs; the package checks that the object is callable and raises a `ConstructionException` naming its class when it is not.
 
 ```php
 // Rule node: a check that rejects with 422 or lets the run go on
@@ -217,7 +217,7 @@ $pdo->exec('CREATE TABLE reservation (sku TEXT, qty INTEGER)');
 
 $runner = new ProcessRunner(new PdoConnection($pdo), PlaceOrderRules::validator());
 
-$nodeFactory = static fn(string $class): callable => match ($class) {
+$nodeFactory = static fn(string $class): object => match ($class) {
     CheckCredit::class => new CheckCredit(),
     ReserveStock::class => new ReserveStock($pdo),
     ConfirmOrder::class => new ConfirmOrder(),
@@ -269,7 +269,7 @@ run(
     ProcessDefinition $definition,
     object $input,
     ?object $actor,
-    \Closure $nodeFactory,        // \Closure(class-string): callable(ProcessContext): NodeResult
+    \Closure $nodeFactory,        // \Closure(class-string): object - builds the node; callable-ness is checked by the package
     ?ProcessContext $parent = null // the surrounding run, when this one is a sub-process
 ): ProcessOutcome
 ```
@@ -352,7 +352,7 @@ $decision = ProcessDefinition::for(PlaceOrder::class, 'PlaceOrderReviewed')
     ->node(ReviewOrder::class)->terminal()
     ->build();
 
-$outcome = $runner->run($decision, new PlaceOrder('ACME', 500), null, static fn(string $class): callable => match ($class) {
+$outcome = $runner->run($decision, new PlaceOrder('ACME', 500), null, static fn(string $class): object => match ($class) {
     CheckCredit::class => new CheckCredit(),
     ReserveStock::class => new ReserveStock($pdo),
     ReviewOrder::class => new ReviewOrder(),
@@ -483,7 +483,7 @@ $write = static fn(string $note): \Closure => static function (ProcessContext $c
 };
 
 $inner = ProcessDefinition::for(stdClass::class, 'InnerRelease')->node('Inner\Release')->terminal()->build();
-$innerNodes = static fn(string $class): callable => static function (ProcessContext $context) use ($write): NodeResult {
+$innerNodes = static fn(string $class): object => static function (ProcessContext $context) use ($write): NodeResult {
     $write('inner')($context);
 
     return NodeResult::reject(ResponseStatus::RuleViolation, 'batch.rule');
@@ -495,7 +495,7 @@ $batch = ProcessDefinition::for(stdClass::class, 'Batch')
     ->node('Batch\Finish')->terminal()
     ->build();
 
-$outcome = $runner->run($batch, new stdClass(), null, static fn(string $class): callable => match ($class) {
+$outcome = $runner->run($batch, new stdClass(), null, static fn(string $class): object => match ($class) {
     'Batch\Prepare' => $write('prepared'),
     'Batch\Release' => new ReleaseBatch($runner, $inner, $innerNodes),
     'Batch\Finish' => $write('finished'),
@@ -543,7 +543,7 @@ $poll = static fn(int $limit): ProcessDefinition => ProcessDefinition::for(stdCl
     ->loopLimit($limit)
     ->node(Poll::class)->onFalse(Poll::class)->onExit(null)
     ->build();
-$pollFactory = static fn(string $class): callable => new Poll();
+$pollFactory = static fn(string $class): object => new Poll();
 
 $outcome = $runner->run($poll(10), new stdClass(), null, $pollFactory);
 // ResponseStatus::Success, response {polls: 3}

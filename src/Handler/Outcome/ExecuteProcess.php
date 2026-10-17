@@ -10,6 +10,7 @@ use JardisSupport\Workflow\Data\ProcessDefinition;
 use JardisSupport\Workflow\Data\ProcessOutcome;
 use JardisSupport\Workflow\Data\RunRequest;
 use JardisSupport\Workflow\Handler\Context\CreateContext;
+use JardisSupport\Workflow\Handler\Node\ResolveNode;
 use JardisSupport\Workflow\Handler\Routing\Workflow;
 
 /**
@@ -27,6 +28,7 @@ final class ExecuteProcess
         private readonly Workflow $engine,
         private readonly \Closure $chain,
         private readonly BuildOutcome $buildOutcome,
+        private readonly ResolveNode $resolveNode,
     ) {
     }
 
@@ -38,7 +40,9 @@ final class ExecuteProcess
                 $request->definition,
                 $node,
                 $context,
-                static fn(ProcessContext $current): NodeResult => ($request->nodeFactory)($node)($current)
+                fn(ProcessContext $current): NodeResult => ($this->resolveNode)(
+                    ($request->nodeFactory)($node)
+                )($current)
             );
         };
 

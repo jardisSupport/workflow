@@ -20,6 +20,7 @@ use JardisSupport\Workflow\Handler\Failure\BuildFailureOutcome;
 use JardisSupport\Workflow\Handler\Failure\MapThrowable;
 use JardisSupport\Workflow\Handler\Loop\GuardLoop;
 use JardisSupport\Workflow\Handler\Node\ApplyRuleMode;
+use JardisSupport\Workflow\Handler\Node\ResolveNode;
 use JardisSupport\Workflow\Handler\Outcome\BuildOutcome;
 use JardisSupport\Workflow\Handler\Outcome\ExecuteProcess;
 use JardisSupport\Workflow\Handler\Outcome\PassThrough;
@@ -76,7 +77,8 @@ final class ProcessRunner
             new CreateContext(),
             new Workflow(),
             $chain,
-            new BuildOutcome($buildFailureOutcome)
+            new BuildOutcome($buildFailureOutcome),
+            new ResolveNode()
         );
 
         $this->execution = array_reduce(
@@ -103,7 +105,7 @@ final class ProcessRunner
     }
 
     /**
-     * @param \Closure(class-string): (callable(ProcessContext): NodeResult) $nodeFactory builds the callable of a node
+     * @param \Closure(class-string): object $nodeFactory builds the node object; the package checks it is callable
      * @param ProcessContext|null $parent the surrounding run when this one is a sub-process
      */
     public function run(

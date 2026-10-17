@@ -26,7 +26,7 @@ ProcessRunner::run($definition, $input, $actor, $nodeFactory, $parent = null)
 | Concept | Meaning |
 |---------|---------|
 | Node | `callable(ProcessContext): NodeResult`; kinds Action (dev code), Call (command/query/sub-process), Rule (check) |
-| Node factory | `\Closure(class-string): callable`; asked each time a node is due (also per loop pass) |
+| Node factory | `\Closure(class-string): object` (only constructs, e.g. `fn(string $c) => new $c(...)`); asked each time a node is due (also per loop pass); the package checks the object is callable, else `ConstructionException` |
 | Route | `Route::OnTrue/OnFalse/OnSkip/OnTimeout/OnCancel/OnExit`; no data on the edge |
 | Reject | `NodeResult::reject(4xx, ...)`: ends the run, rollback, answer = failure form. Not a route |
 | End | `terminal()` = a route mapped to `null`; the last node's response is the run's response |
