@@ -6,7 +6,7 @@ Process engine for one request-response use case: a declared node graph (`Proces
 
 - `ProcessRunner.php` — composition only (`forKernel()` = `ResolveConnection` + constructor; connection nullable): run layers (`MapThrowable`, `ValidateInput`, `CheckActor`, `Bracket`) around the core; node decorators (`GuardLoop`, `CollectEvents`, `HydrateResponse`, `PassThrough`, `ApplyRuleMode`)
 - `Data/` — `ProcessDefinition`, `ProcessContext`, `NodeResult`, `Route`, `RuleMode`, `ProcessOutcome`, `ReadResult`, `Reference`, `Failure/*` (four failure forms), `Response/*` (`ContextResponse`, `DomainResponse`)
-- `Handler/` — one closure class per concern with exactly one public entry point (`__invoke`): `Start/`, `Transaction/`, `Failure/`, `Events/`, `Loop/`, `Node/`, `Outcome/`, `Routing/`, `Context/`, `Response/`
+- `Handler/` — one closure class per concern with exactly one public entry point (`__invoke`): `Start/`, `Transaction/`, `Failure/`, `Events/`, `Loop/`, `Node/`, `Outcome/`, `Routing/`, `Context/`, `Response/` (`TransformResponse`, `BuildResponseData` = the `data` of the envelope)
 - `Exception/` — `WorkflowException` base, `ConstructionException`, `ConfigurationException`, `LoopLimitExceededException`, `UnroutedStatusException`
 
 ## Commands (always `make`)

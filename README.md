@@ -421,6 +421,25 @@ $outcome = $runner->run($definition, new PlaceOrder('ACME', 500), new Buyer('b-1
 // 422, response RuleViolation {rule: 'CreditLimit', messageKey: 'order.creditExceeded'}; nothing was written
 ```
 
+**Data of the envelope.** `BuildResponseData` turns the outcome into the `data` array of the envelope, the one place the wire form of an answer is shaped. The generated handler sets it on the context response; `TransformResponse` then wraps it:
+
+```php
+$this->result()->setData((new BuildResponseData())($outcome, $definition->getName()));
+return (new TransformResponse(new SystemClock(), $this->version()))($this->result(), $outcome->status());
+```
+
+| Answer | `data` |
+|--------|--------|
+| success | `@type` (process name, first letter lower case) plus the public fields of the response |
+| 400 | `{@type: 'validation', fields}` |
+| 404 | `{@type: 'notFound', context}` |
+| 409 | `{@type: 'concurrencyConflict', reason, aggregate, context, violated}` |
+| 422 | `{@type: 'ruleViolation', rule, messageKey, context}` |
+| other 4xx | the fields of the response as given (`messageKey`, `context`), no `@type` |
+| 5xx | empty |
+
+An empty `context` encodes as `{}`. Only the 422 form carries its `messageKey` in `data`; the context keys the 400 form does not know are not part of its answer.
+
 **Other answer values** (`src/Data/`): `ReadResult` is the one form for a list and a single read, `Reference` is the write-side answer value (root identifier plus child identifiers, never objects).
 
 ```php
