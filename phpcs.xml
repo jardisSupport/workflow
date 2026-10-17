@@ -35,5 +35,8 @@
     <rule ref="Squiz.Arrays.ArrayBracketSpacing"/>
 
     <!-- Comments -->
-    <rule ref="Squiz.Commenting.ClassComment"/>
+    <rule ref="Squiz.Commenting.ClassComment">
+        <!-- @internal and @template are legitimate class-level phpdoc tags (Data/Builder, ReadResult<T>) -->
+        <exclude name="Squiz.Commenting.ClassComment.TagNotAllowed"/>
+    </rule>
 </ruleset>

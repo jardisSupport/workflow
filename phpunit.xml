@@ -8,6 +8,12 @@
         <testsuite name="Unit Tests">
             <directory>tests/Unit</directory>
         </testsuite>
+        <testsuite name="Integration Tests">
+            <directory>tests/Integration</directory>
+        </testsuite>
+        <testsuite name="Smoke Tests">
+            <directory>tests/Smoke</directory>
+        </testsuite>
     </testsuites>
 
     <php>

@@ -1,6 +1,6 @@
 ---
 name: support-workflow
-description: jardissupport/workflow - Multi-step process orchestration. Use when working with Workflow, step execution, or jardissupport/workflow.
+description: jardissupport/workflow 2.0 - process engine for one request-response use case. Declare a node graph with ProcessDefinition, run it with ProcessRunner, get a typed ProcessOutcome; NodeResult (ok, route, reject, withEvents), ProcessContext, start validation (400/401), transaction bracket with savepoints, four failure forms. Use when working with ProcessRunner, ProcessDefinition, NodeResult, ProcessContext, failure forms or jardissupport/workflow.
 user-invocable: false
 zone: post-active
 persona: C
@@ -9,170 +9,104 @@ next: [generated-code-workflow-api]
 ---
 
 # WORKFLOW_COMPONENT_SKILL
-> `jardissupport/workflow` | NS: `JardisSupport\Workflow` | PHP 8.2+
+> `jardissupport/workflow` 2.0 | NS: `JardisSupport\Workflow` | PHP 8.3+ | requires `jardissupport/contracts` ^2.12, `jardissupport/scheduling` ^1.2
 
-## ARCHITECTURE
+## Usage essentials
+
+**Trigger:** ProcessRunner, ProcessDefinition, NodeResult, ProcessContext, ProcessOutcome, ReadResult, Reference, ValidationFailure, NotFound, Conflict, RuleViolation, MapResponse, MapThrowable, Bracket, RuleMode, `sp_{depth}`, `process.inputInvalid`.
+
 ```
-Workflow(__invoke($config, $data = null, $context = null))
-  → handler factory receives ($fqcn, $data); handlers themselves see only WorkflowContext
-  → context ??= new WorkflowContext()   // caller may inject one (e.g. a typed WorkflowState); engine returns it
-  → nodes[0] handler → WorkflowResult (one of seven ON_* statuses)
-  → context->append($fqcn, $result)   // pushes new entry; never overwrites
-  → next handler resolved per the configured transition (R5 routing-safety, see below)
-  → loop until no next node
-  → return WorkflowContextInterface
-```
-
-Contracts: `jardissupport/contracts` (`WorkflowInterface`, `WorkflowConfigInterface`, `WorkflowContextInterface`, `WorkflowResultInterface`, `WorkflowBuilderInterface`, `WorkflowNodeBuilderInterface`)
-
-## CLASSES
-| Class | Role |
-|-------|------|
-| `Workflow` | Engine: pushes WorkflowContext into params, executes nodes, returns context |
-| `WorkflowConfig` | Node registry + transition maps; optional `strictRouting` opt-in (default `false`, see Builder section) |
-| `WorkflowContext` | Mutable ordered execution log; FQCN-keyed lookups via `getLatest`/`getAll` (implements `WorkflowContextInterface`) |
-| `WorkflowState<TPayload>` | Recommended typed state object for a process orchestrator: carries `payload → original → modified`; implements `WorkflowContextInterface`, so it can be passed into the engine as `$context` (details below) |
-| `WorkflowResult` | VO: one of seven `ON_*` statuses + data (implements `WorkflowResultInterface`) |
-| `WorkflowBuilder` | Fluent config builder (implements `WorkflowBuilderInterface`) |
-| `WorkflowNodeBuilder` | Transition config per node (implements `WorkflowNodeBuilderInterface`) |
-
-## API
-
-### WorkflowResult
-```php
-new WorkflowResult(WorkflowResult::ON_SUCCESS, $data);    // → onSuccess routing (in loops: "another iteration")
-new WorkflowResult(WorkflowResult::ON_FAIL,    $errors);  // → onFail routing
-new WorkflowResult(WorkflowResult::ON_SKIP,    $data);    // → onSkip routing (handler not applicable)
-new WorkflowResult(WorkflowResult::ON_EVENT,   $payload); // → onEvent routing (async hand-off)
-new WorkflowResult(WorkflowResult::ON_EXIT,    $data);    // → onExit routing (loop/block terminated)
-
-$result->getStatus();              // string — always one of the seven ON_* constants
-$result->getData();                // mixed
-$result->getHandlerFqcn();         // ?string — stamped by engine via withHandler() during append()
-$result->withHandler($fqcn);       // static — new immutable instance with the FQCN set
+ProcessRunner::run($definition, $input, $actor, $nodeFactory, $parent = null)
+  MapThrowable -> ValidateInput (400) -> CheckActor (401) -> Bracket (transaction) -> core
+  core: CreateContext -> Workflow engine over the node chain -> BuildOutcome
+  per node: GuardLoop -> CollectEvents -> HydrateResponse -> PassThrough -> ApplyRuleMode -> your node
+  -> ProcessOutcome { status, response, errors, events, cause }
 ```
 
-**Status constants (the only seven valid values):** `ON_SUCCESS`, `ON_FAIL`, `ON_TIMEOUT`, `ON_SKIP`, `ON_CANCEL`, `ON_EVENT`, `ON_EXIT`. Any other string passed to the constructor raises `InvalidArgumentException`.
-
-**Loop pattern:** in a self-loop, the body handler typically returns `ON_SUCCESS` for "another iteration" (self-edge) and `ON_EXIT` for "loop is done, continue with the outer flow" (edge to the post-loop node).
-
-### WorkflowContext
-Flat ordered execution log — every handler invocation appends a new handler-stamped entry. Re-invocations of the same handler (retry loops, cross-branch revisits) **never overwrite earlier entries**, so history is lossless. Three mantle slots carry state between the flow's entry/final companions and the routing graph.
+| Concept | Meaning |
+|---------|---------|
+| Node | `callable(ProcessContext): NodeResult`; kinds Action (dev code), Call (command/query/sub-process), Rule (check) |
+| Node factory | `\Closure(class-string): object` (only constructs, e.g. `fn(string $c) => new $c(...)`); asked each time a node is due (also per loop pass); the package checks the object is callable, else `ConstructionException` |
+| Route | `Route::OnTrue/OnFalse/OnSkip/OnTimeout/OnCancel/OnExit`; no data on the edge |
+| Reject | `NodeResult::reject(4xx, ...)`: ends the run, rollback, answer = failure form. Not a route |
+| End | `terminal()` = a route mapped to `null`; the last node's response is the run's response |
 
 ```php
-$context->append($fqcn, $result);   // void — stamps via withHandler() and pushes; called by engine
-$context->getPrevious();            // ?WorkflowResultInterface — last appended (immediate predecessor)
-$context->getLatest($fqcn);         // ?WorkflowResultInterface — most recent invocation of that handler
-$context->getAll($fqcn);            // list<WorkflowResultInterface> — every invocation, in execution order
-$context->getChain();               // list<WorkflowResultInterface> — flat ordered log, each stamped
+$definition = ProcessDefinition::for(PlaceOrder::class, 'PlaceOrder')   // input class, name
+    ->validate(PlaceOrderRules::class)->actor(Buyer::class)->context(CheckoutContext::class)
+    ->node(CheckCredit::class)->onTrue(ReserveStock::class)->rejects(ResponseStatus::RuleViolation, 'order.creditExceeded')
+    ->node(ReserveStock::class)->onTrue(ConfirmOrder::class)->response(Reserved::class)
+    ->node(ConfirmOrder::class)->terminal()->response(Confirmed::class)
+    ->build();
 
-$context->reference();              // mixed — pre-loaded data (set by flow entry companion); null default
-$context->setReference($value);
-$context->response();               // mixed — flow's final answer (set by flow final companion); null default
-$context->setResponse($value);
-$context->getException();           // ?\Throwable — captured by orchestrator before re-throw; null on clean run
-$context->setException($e);
+$runner = new ProcessRunner($dbConnection, $validator);          // ?DbConnectionInterface, ValidatorInterface
+$runner = ProcessRunner::forKernel($kernel, $validator);         // writer from $kernel->dbConnection() (pool | PDO | null)
+$outcome = $runner->run($definition, new PlaceOrder('ACME', 2), new Buyer('b-1'), $nodeFactory);
+$outcome->status();   // ResponseStatus::Success
+$outcome->response(); // Confirmed
+$outcome->events();   // caller publishes these AFTER the run (committed)
 ```
 
-### WorkflowState\<TPayload\>
-Recommended typed state object when a **process orchestrator** drives the engine. It implements the full `WorkflowContextInterface` (delegating chain + mantle-slot methods to an internal `WorkflowContext`), so it can be passed in as the engine's third `$context` argument and returned type-compatibly — while exposing a speaking, fully typed three-step. The class body exists **once**; it is not emitted per process. The engine never inspects the three slots.
+### API (`src/`)
 
-```php
-use JardisSupport\Workflow\WorkflowState;
-use JardisSupport\Contract\Workflow\AggregateResponse;
+| Class | Entry points |
+|-------|--------------|
+| `ProcessRunner` | `new ProcessRunner(?DbConnectionInterface, ValidatorInterface)`, `forKernel(DomainKernelInterface, ValidatorInterface)`, `run(definition, input, actor, nodeFactory, parent = null)` |
+| `ResolveConnection` (`Handler/Start/`) | `__invoke(DomainKernelInterface): ?DbConnectionInterface` - pool -> `getWriter()`, `PDO` -> `PdoConnection`, none -> `null` (used by `forKernel`) |
+| `ProcessDefinition` (`Data/ProcessDefinition.php`) | `for(inputClass, name)`, `context`, `transactional(bool)`, `validate`, `actor`, `requires(...)`, `loopLimit(int)` (default 100), `ruleMode(node, RuleMode)`, `node`, `onTrue/onFalse/onSkip/onTimeout/onCancel/onExit(?target)`, `terminal(Route ...)`, `rejects(ResponseStatus, messageKey)`, `response(class, fields...)`, `build()` |
+| `NodeResult` | `ok(array\|object)`, `route(Route, data = null)`, `reject(status, messageKey, context = [], errors = [])`, `withEvents(object ...)`; readers `takenRoute data isRejected status messageKey context errors events` |
+| `ProcessContext` (not final) | `input actor previous latest(node) all(node) iteration(node) chain depth` |
+| `ProcessOutcome` | `status response errors events cause` |
+| `ReadResult<T>` | `ofList(items, total)`, `ofOne(?item)`; `items total first isEmpty` |
+| `Reference` | `new Reference(root, children = [])`; `root children` |
+| `Failure\FailureForm` | `ValidationFailure(messageKey, fields[], context)`, `NotFound`, `Conflict(... reason, aggregate, violated)`, `RuleViolation(rule, messageKey, context)` |
+| `MapResponse` | `__invoke(DomainResponseInterface): NodeResult` (2xx ok, 4xx reject, else throws) |
+| `CheckRequires` | `__invoke(DomainKernelInterface, list<string>): void` (called by the generated handler) |
+| `TransformResponse` | `new TransformResponse(ClockInterface, string $version = '')`; `ContextResponse` -> `DomainResponse` |
 
-/** @var WorkflowState<CreateOrderCommand> $state */
-$state = new WorkflowState();
-$state->payload = $command;          // TPayload — typed process input (the DTO/command that started the run)
+## Full reference
 
-$state->addOriginal($aggResponse);   // push a Fan-in read-projection (AggregateResponse); order preserved
-$state->original;                    // list<AggregateResponse> — middle discriminates by type (instanceof)
+**Context inheritance (W4).** `ProcessContext` is not `final`: generated processes extend it with typed getters over `latest()`/`all()`; named by `context()`, otherwise the run ends 500 (`CreateContext.php:24`). The chain is immutable (`withStep` is engine-internal). Everything else in the package is `final`.
 
-$state->addModified($writeCommand);  // push a Fan-out write-intent command; caller routes each to its facade
-$state->modified;                    // list<object>
+**Start.** `ValidateInput`: only if `validate()` is set, always through the injected validator -> 400 `ValidationFailure` with `fields[]` (`field`, `reason` missing|invalid, `message`), key `process.inputInvalid`. `CheckActor`: `actor()` set and no actor -> 401, key `process.actorMissing`. 403 is a node decision. Nothing of context/nodes/transaction exists for a failed start.
 
-$result = $workflow($config, $data, $state);   // engine appends results into $state, returns it
-// $result === $state — read $state->payload fully typed, plus the usual chain/mantle-slot methods
-```
+**Failure forms.** 400 `ValidationFailure`, 404 `NotFound`, 409 `Conflict`, 422 `RuleViolation` (built from context keys `fields`, `reason/aggregate/violated`, `rule`); other 4xx `stdClass{messageKey, context}`; 5xx empty `stdClass` + `cause()`. `MapThrowable`: `TransientConflictException` in the owning run -> 409 `process.transientConflict` `{reason: transient}`, in a nested run rethrown; any other Throwable -> 500.
 
-- `payload` is a **public** property set by the caller right after construction (no constructor arg).
-- `original` / `modified` are appended via `addOriginal()` / `addModified()`, read as plain `list`s.
-- All `WorkflowContextInterface` methods (`append`, `getPrevious`, `getLatest`, `getAll`, `getChain`, `reference`/`setReference`, `response`/`setResponse`, `getException`/`setException`) delegate to the internal companion context.
+**Transaction (`Bracket`).** Opt-out `transactional(false)`: no bracket. Top-level run, none open: begin/commit-or-rollback. Transaction open (parent's or foreign): savepoint `sp_{depth}`, release on success, rollback-to on >= 400 or exception. Sub-process of a run without transaction: no bracket. A savepoint needs `SavepointInterface`, else `ConfigurationException` (500). Transactional process and no connection (`null`, kernel without database) -> `ConfigurationException` (500), key `process.connectionMissing`; opt-out runs without a connection.
 
-### Builder
-```php
-$config = (new WorkflowBuilder())
-    ->node(ValidateHandler::class)
-        ->onSuccess(PaymentHandler::class)
-        ->onFail(RejectHandler::class)
-    ->node(PaymentHandler::class)
-        ->onSuccess(ShippingHandler::class)
-        ->onFail(NotifyHandler::class)
-        ->onFail(PaymentHandler::class)   // (illustrative: a self-loop replaces ON_RETRY of old API)
-    ->node(ShippingHandler::class)
-    ->node(RejectHandler::class)
-    ->node(NotifyHandler::class)
-    ->build();  // WorkflowConfigInterface
-```
-`WorkflowNodeBuilder` methods: `onSuccess()`, `onFail()`, `onTimeout()`, `onSkip()`, `onCancel()`, `onEvent()`, `onExit()`, `node()`, `build()`
+**Sub-process.** A node calls `$runner->run($inner, $input, $actor, $innerNodes, $context)` (parent = surrounding context), then maps the outcome: >= 500 throw `cause()`, >= 400 reject again or route (dev decision), else `ok((array) response)->withEvents(...$outcome->events())`.
 
-**R5 routing-safety:** the engine resolves the next handler via
-`transitions[$result->getStatus()]`; if that target is not itself registered
-via `node()`/`addNode()`, the engine returns the current context without
-attempting to dispatch. Use this to model hand-off-only nodes whose successors
-live outside the in-process pipeline.
+**Rule modes.** `Guard` (default): a 422 reject ends the run. `Decision`: a 422 becomes `Route::OnFalse`, every other result unchanged (`ApplyRuleMode.php:35`).
 
-**Opt-in strict routing:** `new WorkflowConfig(strictRouting: true)` (constructor
-param on `WorkflowConfig`, default `false`). Requires every status a handler can
-emit to be a declared transition key — `'STATUS' => null` is a legitimate
-declared terminal end; a status with no key at all raises
-`JardisSupport\Workflow\Exception\UnroutedStatusException` (`getNode()`/`getStatus()`).
-Non-strict default stays byte-identical to pre-existing behaviour; the R5
-hand-off above is unaffected by the flag either way.
+**Events.** On the `NodeResult`; collected in execution order; discarded for a rejected result and a failed run; never dispatched by the package. Publish after commit.
 
-### Handler contract
-```php
-use JardisSupport\Contract\Workflow\WorkflowContextInterface;
+**Loops.** Routes may point back; leave via an explicit route (`onExit`). `iteration(node)` counts passes. Step number `loopLimit + 1` never executes -> 500, cause `LoopLimitExceededException`.
 
-class MyHandler {
-    public function __construct(private readonly Order $order) {}
+**Clock.** `TransformResponse` reads time from the injected PSR-20 clock; `SystemClock`/`FixedClock` live in `jardissupport/scheduling` >= 1.2.
 
-    public function __invoke(WorkflowContextInterface $context): WorkflowResult {
-        // single-arg signature — the context is everything the handler sees from the engine.
-        // Per-run input ($order here) is wired in by the handler factory (constructor injection
-        // or — in a generated Context-Familie setup — $this->payload() pulled from a context()-spawned family-internal class).
-        $previous = $context->getPrevious();             // result of the handler that routed here
-        $myHistory = $context->getAll(self::class);      // prior invocations of this handler (for retry counting)
-        return new WorkflowResult(WorkflowResult::ON_SUCCESS, ['key' => 'value']);
-    }
-}
-```
-- Must be callable (`__invoke`) and return `WorkflowResultInterface` (canonical: `WorkflowResult`)
-- Engine passes the `WorkflowContext` as the **single** argument to every invocation
-- Idiomatic retry counter: `$attempt = count($context->getAll(self::class)) + 1;`
-- `InvalidArgumentException` thrown if handler does not return `WorkflowResultInterface`
+## Pitfalls
 
-### Workflow execution
-```php
-$workflow = new Workflow();                                                          // direct, new $cls()
-$workflow = new Workflow(fn(string $cls, mixed $data) => $container->get($cls));     // with factory
+| # | Pitfall | Evidence |
+|---|---------|----------|
+| 1 | A route without a declared key throws `UnroutedStatusException` (500). Declare every route a node can take, `terminal()` or `onX(null)` for a deliberate end | `Routing/Workflow.php:49` |
+| 2 | `reject()` is not a route and takes only 4xx; any other status throws `ConstructionException` | `NodeResult.php:62-64` |
+| 3 | `response(class)` needs a value for every required constructor parameter named by the fields (none named = all); missing value or unknown class -> 500 | `Context/HydrateResponse.php:54,68` |
+| 4 | `RuleMode::Decision` turns only a 422 into `OnFalse`; a 404 or 409 from the node stays a reject | `Node/ApplyRuleMode.php:35` |
+| 5 | A rejected result drops its events; a run that ends in a reject reports none | `Events/CollectEvents.php:30` |
+| 6 | `route()` with `null` data hands on the previous step's data, `ok([])` does not | `Outcome/PassThrough.php:30` |
+| 7 | An open transaction + connection without `SavepointInterface` -> `ConfigurationException` (500) | `Transaction/Bracket.php:84` |
+| 8 | `validate(Class)` never instantiates the class; the injected `ValidatorInterface` does the check | `Start/ValidateInput.php:35` |
+| 9 | The runner never calls `CheckRequires`; the generated handler does, before `run()` | `Start/CheckRequires.php:10-12` ("the runner never does") |
+| 10 | A `TransientConflictException` in a nested run is rethrown; only the owning run answers 409 | `Failure/MapThrowable.php:48` |
+| 11 | The loop limit is checked before the node is built; the exceeding step never runs | `Loop/GuardLoop.php:29` |
+| 12 | After `build()` every mutator throws; a context class must extend `ProcessContext` | `ProcessDefinition.php:343`, `Context/CreateContext.php:24` |
+| 13 | `withEvents()` replaces earlier events of the same result | `NodeResult.php:74` |
+| 14 | A transactional process (the default) on a runner without connection (`forKernel` on a kernel without database) -> `ConfigurationException` (500, `process.connectionMissing`); opt out with `transactional(false)` | `Transaction/Bracket.php` (`CONNECTION_MISSING_KEY`) |
+| 15 | `requires('dbConnection')` is not needed for the transaction - `forKernel()` resolves the writer itself; it only matters when a node uses the connection | `Start/ResolveConnection.php` |
 
-$context = $workflow($config, $perRunData);  // single-shot, returns fresh WorkflowContext
-// $context->getPrevious()              → WorkflowResult of last executed handler
-// $context->getLatest(Foo::class)      → most recent invocation of Foo (or null)
-// $context->getAll(Foo::class)         → every invocation of Foo (list)
-// $context->getChain()                 → full ordered execution log (flat, stamped)
-// $context->reference() / response() / getException()  → mantle slots
+## Layer rules
 
-$context = $workflow($config, $perRunData, $state);  // inject your own context (e.g. WorkflowState); engine returns it
-```
-The third `$context` argument is **optional and non-breaking**: omit it and the engine creates a fresh `WorkflowContext` per run (default). Provide one — typically a typed `WorkflowState` — and the engine appends every handler result into it and returns *that* instance, letting a process orchestrator carry typed state through the run.
-
-Iteration over inputs is the **caller's** job — call `$workflow($config, $item)` once per item; the engine never reuses contexts.
-
-## LAYER RULES
-- Application: build `WorkflowConfig`, execute `Workflow`
-- Domain: NEVER imports Workflow classes
-- Handlers: thin orchestration — delegate to domain services
-- `WorkflowResult`: return type contract, not a domain concept
-- `WorkflowContext`: passed by reference (mutable); handlers READ it, the engine WRITES it
+- Application layer builds definitions and starts the runner; the domain core never imports workflow classes
+- Nodes stay thin and delegate to domain services; they neither publish nor dispatch
+- Integration tests over SQLite with the real validator; mock ports only
+- Generated process classes are smoke-tested against the working tree: `tests/Smoke` (builder golden copies + stubs, namespaces mapped in `tests/bootstrap.php`, no consumer `composer.json`, no path repo); `make phpstan-smoke` analyses it, generat findings are listed in `phpstan-smoke.neon`
