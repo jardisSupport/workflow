@@ -23,6 +23,7 @@ use JardisSupport\Workflow\Data\RunRequest;
 final class MapThrowable
 {
     public const CONFLICT_KEY = 'process.transientConflict';
+    public const CONFLICT_REASON = 'stale_write';
 
     public function __construct(private readonly BuildFailureOutcome $buildFailureOutcome = new BuildFailureOutcome())
     {
@@ -41,7 +42,7 @@ final class MapThrowable
                 ? ($this->buildFailureOutcome)(
                     ResponseStatus::Conflict,
                     self::CONFLICT_KEY,
-                    ['reason' => 'transient'],
+                    ['reason' => self::CONFLICT_REASON, 'aggregate' => $request->definition->getName()],
                     [],
                     $conflict
                 )

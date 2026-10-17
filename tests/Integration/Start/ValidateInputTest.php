@@ -56,6 +56,13 @@ class ValidateInputTest extends TransactionTestCase
         $this->assertSame([], $this->connection->calls(), 'no transaction, no savepoint');
         $this->assertSame([], $this->ledger->notes());
         $this->assertSame([], $outcome->events());
+
+        // The gate answers its paths below the input root (not prefixed again) and names no declared key,
+        // like the pre-move rejectInvalidInput(): `toFields('<input>')`, no messageKey in the data.
+        $this->assertNull($outcome->declaredMessageKey());
+        $data = (new \JardisSupport\Workflow\Handler\Response\BuildResponseData())($outcome, 'PlaceOrder');
+        $this->assertSame(['@type', 'fields'], array_keys($data));
+        $this->assertSame(['customer', 'items[1].qty'], array_column($data['fields'], 'field'));
     }
 
     public function testValidInputRunsTheProcess(): void

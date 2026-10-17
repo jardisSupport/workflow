@@ -174,6 +174,7 @@ class BuildResponseDataTest extends RunnerTestCase
                 'aggregate' => 'order',
                 'context' => ['orderNumber' => 'O-1'],
                 'violated' => ['uq'],
+                'messageKey' => 'order.clash',
             ],
             $data
         );
@@ -200,6 +201,148 @@ class BuildResponseDataTest extends RunnerTestCase
         $outcome = new ProcessOutcome(ResponseStatus::InternalError, new stdClass(), [], [], new \RuntimeException('boom'));
 
         $this->assertSame([], (new BuildResponseData())($outcome, 'CheckoutOrder'));
+    }
+
+    public function testDeclaredKeyOfTheRejectingNodeJoinsEveryClientErrorAfterTheForm(): void
+    {
+        $definition = ProcessDefinition::for('In', 'CheckoutOrder')->node(self::NODE)->terminal()->build();
+        $cases = [
+            [ResponseStatus::NotFound, ['orderNumber' => 'X'], ['@type' => 'notFound', 'context' => ['orderNumber' => 'X']]],
+            [
+                ResponseStatus::ValidationError,
+                ['fields' => [['field' => 'a', 'reason' => 'invalid', 'message' => 'm']]],
+                ['@type' => 'validation', 'fields' => [['field' => 'a', 'reason' => 'invalid', 'message' => 'm']]],
+            ],
+            [
+                ResponseStatus::Conflict,
+                ['reason' => 'stale', 'aggregate' => 'order'],
+                [
+                    '@type' => 'concurrencyConflict',
+                    'reason' => 'stale',
+                    'aggregate' => 'order',
+                    'context' => new stdClass(),
+                    'violated' => [],
+                ],
+            ],
+            [
+                ResponseStatus::RuleViolation,
+                ['rule' => 'OrderMustBeOpen'],
+                ['@type' => 'ruleViolation', 'rule' => 'OrderMustBeOpen', 'messageKey' => 'order.declared', 'context' => new stdClass()],
+            ],
+        ];
+
+        foreach ($cases as [$status, $context, $form]) {
+            $outcome = $this->outcomeOf($definition, static fn(ProcessContext $c): NodeResult => NodeResult::reject(
+                $status,
+                'order.declared',
+                $context
+            ));
+
+            $expected = $status === ResponseStatus::RuleViolation ? $form : $form + ['messageKey' => 'order.declared'];
+            $this->assertEquals($expected, (new BuildResponseData())($outcome, 'CheckoutOrder'), $status->name);
+            if ($status !== ResponseStatus::RuleViolation) {
+                $this->assertSame('messageKey', array_key_last((new BuildResponseData())($outcome, 'CheckoutOrder')), $status->name);
+            }
+        }
+    }
+
+    public function testDeclaredKeyOfAClientErrorWithoutFormIsKept(): void
+    {
+        $definition = ProcessDefinition::for('In', 'CheckoutOrder')->node(self::NODE)->terminal()->build();
+
+        $outcome = $this->outcomeOf($definition, static fn(ProcessContext $c): NodeResult => NodeResult::reject(
+            ResponseStatus::Forbidden,
+            'order.forbidden'
+        ));
+
+        $this->assertSame(
+            ['messageKey' => 'order.forbidden', 'context' => []],
+            (new BuildResponseData())($outcome, 'CheckoutOrder')
+        );
+    }
+
+    public function testNoKeyIsDeclaredForSuccessOrAnEmptyKey(): void
+    {
+        $definition = ProcessDefinition::for('In', 'CheckoutOrder')->node(self::NODE)->terminal()->build();
+        $notFound = $this->outcomeOf($definition, static fn(ProcessContext $c): NodeResult => NodeResult::reject(
+            ResponseStatus::NotFound,
+            ''
+        ));
+        $success = $this->outcomeOf($definition, static fn(ProcessContext $c): NodeResult => NodeResult::ok(['a' => 1]));
+
+        $this->assertArrayNotHasKey('messageKey', (new BuildResponseData())($notFound, 'CheckoutOrder'));
+        $this->assertNull($success->declaredMessageKey());
+        $this->assertSame(['@type' => 'checkoutOrder', 'a' => 1], (new BuildResponseData())($success, 'CheckoutOrder'));
+    }
+
+    public function testKeysOfThePackageLayersNeverReachTheData(): void
+    {
+        $outcome = (new \JardisSupport\Workflow\Handler\Failure\BuildFailureOutcome())(
+            ResponseStatus::NotFound,
+            'process.something',
+            ['k' => 'v']
+        );
+
+        $this->assertNull($outcome->declaredMessageKey());
+        $this->assertSame(
+            ['@type' => 'notFound', 'context' => ['k' => 'v']],
+            (new BuildResponseData())($outcome, 'CheckoutOrder')
+        );
+    }
+
+    public function testRejectOfAnInputNodeAnswersFieldPathsBelowTheInputProperty(): void
+    {
+        $definition = ProcessDefinition::for('In', 'CheckoutOrder')->node(self::NODE)->input('customer')->terminal()->build();
+        $fields = [
+            ['reason' => 'missing', 'field' => 'email', 'message' => 'Required', 'messageKey' => 'k.missing'],
+            ['field' => 'address.zip', 'reason' => 'invalid', 'message' => 'Bad'],
+        ];
+
+        $outcome = $this->outcomeOf($definition, static fn(ProcessContext $c): NodeResult => NodeResult::reject(
+            ResponseStatus::ValidationError,
+            'customer.invalid',
+            ['fields' => $fields]
+        ));
+
+        // The pre-move failureData(): ['field' => $input . '.' . $finding['field']] + $finding.
+        $this->assertSame(
+            [
+                '@type' => 'validation',
+                'fields' => [
+                    ['field' => 'customer.email', 'reason' => 'missing', 'message' => 'Required', 'messageKey' => 'k.missing'],
+                    ['field' => 'customer.address.zip', 'reason' => 'invalid', 'message' => 'Bad'],
+                ],
+                'messageKey' => 'customer.invalid',
+            ],
+            (new BuildResponseData())($outcome, 'CheckoutOrder')
+        );
+    }
+
+    public function testRejectOfANodeWithoutInputPropertyKeepsItsFieldPaths(): void
+    {
+        $definition = ProcessDefinition::for('In', 'CheckoutOrder')->node(self::NODE)->terminal()->build();
+        $fields = [['field' => 'email', 'reason' => 'missing', 'message' => 'Required']];
+
+        $outcome = $this->outcomeOf($definition, static fn(ProcessContext $c): NodeResult => NodeResult::reject(
+            ResponseStatus::ValidationError,
+            'x.invalid',
+            ['fields' => $fields]
+        ));
+
+        $this->assertSame($fields, (new BuildResponseData())($outcome, 'CheckoutOrder')['fields']);
+    }
+
+    public function testInputPropertyDoesNotTouchOtherStatuses(): void
+    {
+        $definition = ProcessDefinition::for('In', 'CheckoutOrder')->node(self::NODE)->input('customer')->terminal()->build();
+
+        $outcome = $this->outcomeOf($definition, static fn(ProcessContext $c): NodeResult => NodeResult::reject(
+            ResponseStatus::NotFound,
+            'customer.notFound',
+            ['fields' => 'kept', 'id' => 1]
+        ));
+
+        $this->assertSame(['fields' => 'kept', 'id' => 1], (new BuildResponseData())($outcome, 'CheckoutOrder')['context']);
     }
 
     /**

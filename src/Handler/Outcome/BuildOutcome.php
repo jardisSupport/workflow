@@ -7,6 +7,7 @@ namespace JardisSupport\Workflow\Handler\Outcome;
 use JardisSupport\Contract\Kernel\ResponseStatus;
 use JardisSupport\Workflow\Data\NodeResult;
 use JardisSupport\Workflow\Data\ProcessContext;
+use JardisSupport\Workflow\Data\ProcessDefinition;
 use JardisSupport\Workflow\Data\ProcessOutcome;
 use JardisSupport\Workflow\Exception\ConstructionException;
 use JardisSupport\Workflow\Handler\Failure\BuildFailureOutcome;
@@ -16,7 +17,8 @@ use JardisSupport\Workflow\Handler\Failure\BuildFailureOutcome;
  *
  * Success: status 200, the data of the last step as response object, the events of all steps in
  * execution order. Reject: the failure answer of the rejecting step ({@see BuildFailureOutcome}),
- * no events.
+ * no events; its message key is the declared one, and a 400 below a declared input property
+ * ({@see ProcessDefinition::input()}) answers its field paths below that property.
  */
 final class BuildOutcome
 {
@@ -27,7 +29,7 @@ final class BuildOutcome
     /**
      * @throws ConstructionException on a run without steps or data that is neither array nor object
      */
-    public function __invoke(ProcessContext $context): ProcessOutcome
+    public function __invoke(ProcessContext $context, ?ProcessDefinition $definition = null): ProcessOutcome
     {
         $last = $context->previous() ?? throw new ConstructionException('A finished run has at least one step');
         $status = $last->status();
@@ -35,12 +37,43 @@ final class BuildOutcome
             return ($this->buildFailureOutcome)(
                 $status,
                 (string) $last->messageKey(),
-                $last->context(),
-                $last->errors()
+                $this->prefixed($status, $last->context(), $definition?->getInput($this->lastNode($context))),
+                $last->errors(),
+                null,
+                true
             );
         }
 
         return new ProcessOutcome(ResponseStatus::Success, $this->response($last), [], $this->events($context));
+    }
+
+    private function lastNode(ProcessContext $context): string
+    {
+        $last = array_slice($context->chain(), -1);
+
+        return $last === [] ? '' : $last[0]['node'];
+    }
+
+    /**
+     * The 400 findings below the input property that fed the node; every other reject unchanged.
+     *
+     * @param array<string, mixed> $rejectContext
+     * @return array<string, mixed>
+     */
+    private function prefixed(ResponseStatus $status, array $rejectContext, ?string $input): array
+    {
+        $fields = $rejectContext['fields'] ?? null;
+        if ($status !== ResponseStatus::ValidationError || $input === null || !is_array($fields)) {
+            return $rejectContext;
+        }
+        $rejectContext['fields'] = array_map(
+            static fn(mixed $finding): mixed => is_array($finding) && is_string($finding['field'] ?? null)
+                ? ['field' => $input . '.' . $finding['field']] + $finding
+                : $finding,
+            $fields
+        );
+
+        return $rejectContext;
     }
 
     private function response(NodeResult $last): object

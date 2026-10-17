@@ -20,7 +20,8 @@ use stdClass;
  * - 400 `validation`: `@type`, `fields`; 404 `notFound`: `@type`, `context`;
  *   409 `concurrencyConflict`: `@type`, `reason`, `aggregate`, `context`, `violated`;
  *   422 `ruleViolation`: `@type`, `rule`, `messageKey`, `context`;
- * - the message key travels in `data` only with the 422 form; an empty `context` encodes as `{}`;
+ * - the message key a node declared with its reject joins the data of every 4xx, the keys of the
+ *   package's own layers do not; the 422 form always carries its own; an empty `context` encodes as `{}`;
  * - another 4xx passes its response fields through unchanged, a 5xx answers no data.
  *
  * Atomic closure - one entry point.
@@ -34,11 +35,18 @@ final class BuildResponseData
     {
         $response = $outcome->response();
 
-        return match (true) {
+        $data = match (true) {
             $response instanceof FailureForm => $this->failure($response),
             $outcome->status()->value >= 400 => get_object_vars($response),
             default => ['@type' => lcfirst($processName)] + get_object_vars($response),
         };
+
+        $declared = $outcome->declaredMessageKey();
+        if ($declared !== null && $declared !== '' && $outcome->status()->value >= 400) {
+            $data['messageKey'] = $declared;
+        }
+
+        return $data;
     }
 
     /**
