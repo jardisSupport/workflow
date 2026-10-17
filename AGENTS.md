@@ -1,17 +1,24 @@
 # jardissupport/workflow
 
-Multi-step orchestration: Handler chains via `WorkflowConfig`, status and named transitions, typed `WorkflowContext` propagated through the chain.
+Process engine for one request-response use case: a declared node graph (`ProcessDefinition`), run by `ProcessRunner`, answered as a typed `ProcessOutcome` (status, response, errors, events). Details: `README.md`, skill `support-workflow`, https://docs.jardis.io/en/support/workflow
 
-## Usage essentials
+## Layout (`src/`)
 
-- **Two-class execution:** `$workflow = new Workflow();` or `new Workflow(fn(string $class, mixed $data) => $container->get($class))` (Factory for DI); call `$workflow($config, $data = null)` returns a `WorkflowContextInterface` carrying every handler invocation as a flat handler-stamped entry. Always starts at the first `addNode()` entry — the order of node registration determines the entry point. The engine is stateless and single-shot: iteration over inputs and aggregation across multiple runs are the caller's job.
-- **Handler contract is fixed:** Every handler has `__invoke(WorkflowContextInterface $context): WorkflowResult` and MUST return `WorkflowResult` (otherwise `InvalidArgumentException`). Per-run input arrives via the handler factory — typically the factory wires `$data` into the handler's constructor. The handler reaches its predecessor's result via `$context->getPrevious()`, any handler's most recent result via `$context->getLatest(SomeHandler::class)`, or all invocations of a handler via `$context->getAll(SomeHandler::class)`. Mantle slots: `$context->reference()` / `setReference()` (pre-loaded data set by the flow's entry companion), `$context->response()` / `setResponse()` (final answer built by the final companion), `$context->getException()` / `setException()` (captured by the orchestrator before re-throw).
-- **Transition resolution is a direct status lookup:** `determineNextHandler()` reads `config->getTransitions($currentHandler)`, looks up `transitions[$result->getStatus()]`, and returns it only if that target is itself a registered node (R5 routing-safety — prevents dispatch to a handler whose signature/role does not match the pipeline). No transitions configured, no entry for the status, or an unregistered target → the engine returns control to the caller. No status fallback chain. **Opt-in strict routing** (`new WorkflowConfig(strictRouting: true)`, default `false`) tightens the "no entry for the status" case: `'STATUS' => null` stays a legitimate, silent, declared terminal end, but a status with no transition key at all now raises `JardisSupport\Workflow\Exception\UnroutedStatusException` (`getNode()`/`getStatus()`) instead of silently stopping. The R5 hand-off case is unaffected by the flag either way; default `false` is byte-identical to pre-strict-routing behaviour.
-- **`WorkflowResult` as routing VO:** `new WorkflowResult(WorkflowResult::ON_SUCCESS, $data)` or `WorkflowResult::ON_FAIL, $errors`. Constants (all seven, no others): `ON_SUCCESS`/`ON_FAIL`/`ON_TIMEOUT`/`ON_SKIP`/`ON_CANCEL`/`ON_EVENT`/`ON_EXIT`. Accessors: `getStatus()`, `getData()`, `getHandlerFqcn()` (stamped by the engine via `withHandler()` during `append()`).
-- **`WorkflowContext` as flat execution log:** Mutable DTO. `append($fqcn, $result)` stamps the result via `withHandler()` and pushes it to the chain — re-invocations of the same handler (retry loops, cross-branch revisits) **never overwrite earlier entries**, so history is lossless. `getPrevious()` = immediate predecessor (null on first call); `getLatest($fqcn)` = most recent invocation of that handler; `getAll($fqcn)` = every invocation of that handler in execution order; `getChain()` = full ordered `list<WorkflowResultInterface>` where every result knows its producing handler. `WorkflowState<TPayload>` is the recommended typed alternative for process orchestrators — implements `WorkflowContextInterface` by delegating to an internal `WorkflowContext`, adding a typed `payload`/`original`/`modified` three-step; pass it as `$workflow($config, $data, $state)`.
-- **Fluent Builder is the recommended config approach:** `(new WorkflowBuilder())->node(Class)->onSuccess(Next)->onFail(Other)->onTimeout(Self)->node(Next)->build()` returns `WorkflowConfigInterface`. `WorkflowNodeBuilder` has 7 transition methods (`onSuccess`/`onFail`/`onTimeout`/`onSkip`/`onCancel`/`onEvent`/`onExit`) plus `node()` and `build()`. Alternatively use `WorkflowConfig::addNode(Class, [ON_SUCCESS => Next, ON_FAIL => Other])` directly.
-- **Contract and Layer rule:** Public interfaces from `jardissupport/contracts` (`WorkflowInterface`, `WorkflowConfigInterface`, `WorkflowContextInterface`, `WorkflowResultInterface`, `WorkflowBuilderInterface`, `WorkflowNodeBuilderInterface`). The Application Layer builds the config and starts the Workflow — **Domain never imports Workflow**. Handlers stay thin and delegate to domain services; `WorkflowResult` is a return type Contract, not a domain concept.
+- `ProcessRunner.php` — composition only: run layers (`MapThrowable`, `ValidateInput`, `CheckActor`, `Bracket`) around the core; node decorators (`GuardLoop`, `CollectEvents`, `HydrateResponse`, `PassThrough`, `ApplyRuleMode`)
+- `Data/` — `ProcessDefinition`, `ProcessContext`, `NodeResult`, `Route`, `RuleMode`, `ProcessOutcome`, `ReadResult`, `Reference`, `Failure/*` (four failure forms), `Response/*` (`ContextResponse`, `DomainResponse`)
+- `Handler/` — one closure class per concern with exactly one public entry point (`__invoke`): `Start/`, `Transaction/`, `Failure/`, `Events/`, `Loop/`, `Node/`, `Outcome/`, `Routing/`, `Context/`, `Response/`
+- `Exception/` — `WorkflowException` base, `ConstructionException`, `ConfigurationException`, `LoopLimitExceededException`, `UnroutedStatusException`
 
-## Full reference
+## Commands (always `make`)
 
-https://docs.jardis.io/en/support/workflow
+`make phpunit` · `make phpunit-coverage` · `make phpstan` · `make phpcs` · `make install` · `make shell`
+
+## Rules
+
+- Closure-Orchestrator: atomic closure classes (one public `__invoke`), the runner only composes them, no logic of its own
+- Everything is `final`; the one exception is `ProcessContext` (generated processes extend it with typed getters, the chain stays immutable)
+- Constructor injection, no static state; the clock is an injected PSR-20 `ClockInterface`
+- The package publishes and dispatches nothing: events travel on the `NodeResult`, the caller publishes after the commit
+- A reject is not a route; routing is strict (an undeclared route throws `UnroutedStatusException`)
+- Tests are integration tests (SQLite, real validator); mock ports only, no assertion weakening
+- The domain core never imports workflow classes
