@@ -249,7 +249,7 @@ $outcome->events();   // [OrderPlaced {orderNo: 'O-A-1'}]
 | `node(string $node)` | Declare a node and make it the current one |
 | `onTrue` / `onFalse` / `onSkip` / `onTimeout` / `onCancel` / `onExit` `(?string $target)` | Route of the current node; `null` declares a terminal end |
 | `terminal(Route ...$routes)` | Terminal end for the given routes (none given: `onTrue`) |
-| `rejects(ResponseStatus $status, string $messageKey)` | Declare a 4xx the current node may reject with (non-4xx throws) |
+| `rejects(ResponseStatus $status, string $messageKey)` | Declare a 4xx the current node may reject with and the message key it answers for that status (non-4xx throws) |
 | `input(string $property)` | Name the process input property that feeds the current node; its 400 rejects answer field paths below it |
 | `response(string $responseClass, string ...$fields)` | Typed answer of the current node, see below |
 | `build()` | Validate the graph (unknown targets, unknown rule-mode node) and freeze |
@@ -319,14 +319,24 @@ The chain is immutable: the engine hands every step a new context (`withStep()`,
 
 Readers: `takenRoute()` (null exactly for a reject), `data()`, `isRejected()`, `status()`, `messageKey()`, `context()`, `errors()`, `events()`.
 
-**Call nodes.** `MapResponse` turns the answer of a called domain operation (`DomainResponseInterface`) into a node result: 2xx becomes `ok(data)`, 4xx a `reject` with the `messageKey` from the callee's data, every other status throws.
+**Call nodes.** `MapResponse` turns the answer of a called domain operation (`DomainResponseInterface`) into a node result: 2xx becomes `ok(data)`, 4xx a `reject` whose context is the *plain* context of the callee, every other status throws. The form of the callee's data is unpacked, so the process answers the same form again (no form inside a form):
+
+| Callee status | Reject context | Reject `messageKey` |
+|---------------|----------------|---------------------|
+| 400 | `fields` | `''` |
+| 404 | the inner `context` | `''` |
+| 409 | `reason`, `aggregate`, `violated`, plus the inner `context` | `''` |
+| 422 | `rule`, plus the inner `context` | the callee's `messageKey` |
+| other 4xx (401, 403, ...) | the data unchanged, a `messageKey` in it stays where it is | `''` |
+
+`@type` is dropped. The message key travels as the reject key only for 422; for 400, 404 and 409 the key is left to the node's declaration (`rejects()`, see "Message key in `data`"), and a status without a form passes its data through unchanged. The form's own fields win over an inner context key of the same name.
 
 ```php
-$answer = new DomainResponse(ResponseStatus::NotFound, ['messageKey' => 'stock.unknown', 'sku' => 'Z-9'], [], [], []);
+$answer = new DomainResponse(ResponseStatus::NotFound, ['@type' => 'notFound', 'context' => ['sku' => 'Z-9']], [], [], []);
 $result = (new MapResponse())($answer);
 $result->isRejected(); // true
 $result->status();     // ResponseStatus::NotFound
-$result->messageKey(); // 'stock.unknown'
+$result->messageKey(); // ''
 $result->context();    // ['sku' => 'Z-9']
 ```
 
@@ -402,7 +412,7 @@ A run answers with a `ProcessOutcome`. Success is status 200, the response is th
 | 404 | `NotFound(messageKey, context)` | all keys are context |
 | 409 | `Conflict(messageKey, context, reason, aggregate, violated[])` | `reason`, `aggregate`, `violated` |
 | 422 | `RuleViolation(rule, messageKey, context)` | `rule` |
-| other 4xx | `stdClass {messageKey, context}` | as given |
+| other 4xx | a reject of a node: `stdClass` of its context (flat data), its key joins the data last; the start failure without a form (401 actor missing): `stdClass {messageKey, context}`, internal only | as given |
 | 5xx | empty `stdClass`; the throwable is `cause()` | nothing of it reaches the answer |
 
 All forms implement `FailureForm` (`status()`, `messageKey()`, `context()`). A failed run reports no events.
@@ -436,12 +446,12 @@ return (new TransformResponse(new SystemClock(), $this->version()))($this->resul
 | 404 | `{@type: 'notFound', context}` |
 | 409 | `{@type: 'concurrencyConflict', reason, aggregate, context, violated}` |
 | 422 | `{@type: 'ruleViolation', rule, messageKey, context}` |
-| other 4xx | the fields of the response as given (`messageKey`, `context`), no `@type` |
+| other 4xx | the fields of the response as given (a node reject: its context as flat data, the declared key last, e.g. `{"messageKey": "access.invalidCredentials"}` for a 401 without payload), no `@type`; the 401 of the missing actor answers no data |
 | 5xx | empty |
 
 An empty `context` encodes as `{}`. The context keys the 400 form does not know are not part of its answer.
 
-**Message key in `data`.** The key a node names with its `reject` is the *declared* key (`ProcessOutcome::declaredMessageKey()`): it joins the `data` of every 4xx as the last member (the 422 form carries it anyway), an empty key names none. The keys of the package's own layers (`process.inputInvalid`, `process.actorMissing`, `process.transientConflict`) are never declared and never reach `data`.
+**Message key in `data`.** The key a node declares for a 4xx status with `rejects(status, key)` wins; without a declaration it is the key the node names with its `reject`. That *declared* key (`ProcessOutcome::declaredMessageKey()`) joins the `data` of every 4xx as the last member (the 422 form carries it at its own place and the declared key replaces it there), an empty key names none. A reject passed through a call node (`MapResponse`) therefore answers the declared key of its node, and for 400, 404 and 409 only that one. The keys of the package's own layers (`process.inputInvalid`, `process.actorMissing`, `process.transientConflict`) are never declared and never reach `data`.
 
 **Field paths.** The input check answers its paths below the input root (`customer`, `items[1].qty`). A node fed by one input property declares it with `input('customer')`; a 400 reject of that node answers its findings as `customer.<field>`.
 

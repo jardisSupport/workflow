@@ -22,7 +22,8 @@ use stdClass;
  *   422 `ruleViolation`: `@type`, `rule`, `messageKey`, `context`;
  * - the message key a node declared with its reject joins the data of every 4xx, the keys of the
  *   package's own layers do not; the 422 form always carries its own; an empty `context` encodes as `{}`;
- * - another 4xx passes its response fields through unchanged, a 5xx answers no data.
+ * - another 4xx of a node (declared) passes its response fields through unchanged; one of the package's
+ *   own layers (not declared, e.g. the missing actor) and a 5xx answer no data.
  *
  * Atomic closure - one entry point.
  */
@@ -37,7 +38,7 @@ final class BuildResponseData
 
         $data = match (true) {
             $response instanceof FailureForm => $this->failure($response),
-            $outcome->status()->value >= 400 => get_object_vars($response),
+            $outcome->status()->value >= 400 => $this->clientError($outcome),
             default => ['@type' => lcfirst($processName)] + get_object_vars($response),
         };
 
@@ -47,6 +48,17 @@ final class BuildResponseData
         }
 
         return $data;
+    }
+
+    /**
+     * A 4xx without a form: the fields of a node's reject as given, nothing for a failure of the
+     * package's own layers (they name no declared key).
+     *
+     * @return array<string, mixed>
+     */
+    private function clientError(ProcessOutcome $outcome): array
+    {
+        return $outcome->declaredMessageKey() === null ? [] : get_object_vars($outcome->response());
     }
 
     /**

@@ -191,7 +191,7 @@ class BuildResponseDataTest extends RunnerTestCase
         ));
 
         $this->assertSame(
-            ['messageKey' => 'order.forbidden', 'context' => ['role' => 'guest']],
+            ['role' => 'guest', 'messageKey' => 'order.forbidden'],
             (new BuildResponseData())($outcome, 'CheckoutOrder')
         );
     }
@@ -256,7 +256,7 @@ class BuildResponseDataTest extends RunnerTestCase
         ));
 
         $this->assertSame(
-            ['messageKey' => 'order.forbidden', 'context' => []],
+            ['messageKey' => 'order.forbidden'],
             (new BuildResponseData())($outcome, 'CheckoutOrder')
         );
     }

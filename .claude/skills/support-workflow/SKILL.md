@@ -9,7 +9,7 @@ next: [generated-code-workflow-api]
 ---
 
 # WORKFLOW_COMPONENT_SKILL
-> `jardissupport/workflow` 2.1 | NS: `JardisSupport\Workflow` | PHP 8.3+ | requires `jardissupport/contracts` ^2.12, `jardissupport/scheduling` ^1.2
+> `jardissupport/workflow` 2.1 | NS: `JardisSupport\Workflow` | PHP 8.3+ | requires `jardissupport/contracts` ^2.12, `jardissupport/repository` ^1.6, `jardissupport/scheduling` ^1.2
 
 ## Usage essentials
 
@@ -60,7 +60,7 @@ $outcome->events();   // caller publishes these AFTER the run (committed)
 | `ReadResult<T>` | `ofList(items, total)`, `ofOne(?item)`; `items total first isEmpty` |
 | `Reference` | `new Reference(root, children = [])`; `root children` |
 | `Failure\FailureForm` | `ValidationFailure(messageKey, fields[], context)`, `NotFound`, `Conflict(... reason, aggregate, violated)`, `RuleViolation(rule, messageKey, context)` |
-| `MapResponse` | `__invoke(DomainResponseInterface): NodeResult` (2xx ok, 4xx reject, else throws) |
+| `MapResponse` | `__invoke(DomainResponseInterface): NodeResult` (2xx ok, 4xx reject with the callee's plain context - `@type` dropped, inner `context` lifted, 400 `fields` / 409 `reason aggregate violated` / 422 `rule` kept; callee key only for 422; other 4xx e.g. 401/403: data unchanged as context; else throws) |
 | `CheckRequires` | `__invoke(DomainKernelInterface, list<string>): void` (called by the generated handler) |
 | `BuildResponseData` (`Handler/Response/`) | `__invoke(ProcessOutcome, string $processName): array` - the `data` of the envelope per answer form |
 | `TransformResponse` | `new TransformResponse(ClockInterface, string $version = '')`; `ContextResponse` -> `DomainResponse` |
@@ -86,10 +86,10 @@ $this->result()->setData((new BuildResponseData())($outcome, $definition->getNam
 | 404 | `{@type: 'notFound', context}` |
 | 409 | `{@type: 'concurrencyConflict', reason, aggregate, context, violated}` |
 | 422 | `{@type: 'ruleViolation', rule, messageKey, context}` |
-| other 4xx | response fields as given, no `@type` |
+| other 4xx | response fields as given, no `@type`; a node reject (`reject(403, key, ctx)`): `ctx` as flat data, the declared key last (no `context` wrapper); the package's own 401 (actor missing) answers no data |
 | 5xx | empty array |
 
-An empty `context` encodes as `{}`. The key a node names in `reject(...)` is `ProcessOutcome::declaredMessageKey()`: it joins `data['messageKey']` of every status >= 400; the package's own keys (`process.inputInvalid`, `process.actorMissing`, `process.transientConflict`) are never declared, so they stay out of `data`.
+An empty `context` encodes as `{}`. The key a node declares with `rejects(status, key)` (else the one it names in `reject(...)`) is `ProcessOutcome::declaredMessageKey()`: it joins `data['messageKey']` of every status >= 400; the package's own keys (`process.inputInvalid`, `process.actorMissing`, `process.transientConflict`) are never declared, so they stay out of `data`.
 
 **Field paths.** `ValidateInput` answers paths below the input root (`customer`, `items[1].qty`). `->input('customer')` on a node: a 400 reject of that node prefixes its `fields[].field` with `customer.`; other statuses unchanged.
 
@@ -124,7 +124,7 @@ An empty `context` encodes as `{}`. The key a node names in `reject(...)` is `Pr
 | 13 | `withEvents()` replaces earlier events of the same result | `NodeResult.php:74` |
 | 14 | A transactional process (the default) on a runner without connection (`forKernel` on a kernel without database) -> `ConfigurationException` (500, `process.connectionMissing`); opt out with `transactional(false)` | `Transaction/Bracket.php` (`CONNECTION_MISSING_KEY`) |
 | 15 | `requires('dbConnection')` is not needed for the transaction - `forKernel()` resolves the writer itself; it only matters when a node uses the connection | `Start/ResolveConnection.php` |
-| 16 | `declaredMessageKey()` is set only by a node's `reject()`; start, actor and thrown failures carry none, so their `data` has no `messageKey` (the 422 form carries its own) | `Handler/Response/BuildResponseData.php:44-47`, `Handler/Failure/BuildFailureOutcome.php:41` |
+| 16 | `declaredMessageKey()` is set only by a node's `reject()` - the key `rejects(status, key)` declares for that node and status replaces the one the reject carries (`BuildOutcome::declaredKey`); a call node (`MapResponse`) carries a callee key only for 422 (400/404/409: only the declared one reaches `data`; other 4xx: the callee's data incl. its key passes through, a declaration replaces the key in place or appends it); start, actor and thrown failures carry none, so their `data` has no `messageKey` (the 422 form carries its own); the actor-missing 401 answers empty `data` | `Handler/Response/BuildResponseData.php:44-47`, `Handler/Failure/BuildFailureOutcome.php:41`, `Handler/Response/BuildResponseData.php` (`clientError`), `Handler/Outcome/BuildOutcome.php:38-47,57`, `Handler/Failure/BuildFailureOutcome.php:39-44`, `Handler/Node/MapResponse.php` |
 | 17 | `input(property)` prefixes only the `fields` of a 400 reject of its node; a reject without `fields` or with another status stays unchanged | `Handler/Outcome/BuildOutcome.php:66` |
 
 ## Layer rules
