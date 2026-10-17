@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace JardisSupport\Workflow;
 
 use JardisSupport\Contract\DbConnection\DbConnectionInterface;
+use JardisSupport\Contract\Kernel\DomainKernelInterface;
 use JardisSupport\Contract\Validation\ValidatorInterface;
 use JardisSupport\Workflow\Data\NodeResult;
 use JardisSupport\Workflow\Data\ProcessContext;
@@ -24,6 +25,7 @@ use JardisSupport\Workflow\Handler\Outcome\ExecuteProcess;
 use JardisSupport\Workflow\Handler\Outcome\PassThrough;
 use JardisSupport\Workflow\Handler\Routing\Workflow;
 use JardisSupport\Workflow\Handler\Start\CheckActor;
+use JardisSupport\Workflow\Handler\Start\ResolveConnection;
 use JardisSupport\Workflow\Handler\Start\ValidateInput;
 use JardisSupport\Workflow\Handler\Transaction\Bracket;
 
@@ -34,13 +36,17 @@ use JardisSupport\Workflow\Handler\Transaction\Bracket;
  * CollectEvents, HydrateResponse, PassThrough and ApplyRuleMode; the engine walks the graph over
  * that chain and BuildOutcome turns the finished run into the answer. The run itself sits in
  * layers, outside in: MapThrowable, ValidateInput, CheckActor, Bracket, then the core.
+ *
+ * The connection is optional: a process that opted out of the transaction runs without one, a
+ * transactional process without one ends with 500 (see {@see Bracket}). {@see self::forKernel()}
+ * takes the writer from the kernel.
  */
 final class ProcessRunner
 {
     /** @var \Closure(RunRequest): ProcessOutcome */
     private \Closure $execution;
 
-    public function __construct(DbConnectionInterface $connection, ValidatorInterface $validator)
+    public function __construct(?DbConnectionInterface $connection, ValidatorInterface $validator)
     {
         $buildFailureForm = new BuildFailureForm();
         $buildFailureOutcome = new BuildFailureOutcome($buildFailureForm);
@@ -85,6 +91,15 @@ final class ProcessRunner
             ): ProcessOutcome => $layer($request, $inner),
             $core(...)
         );
+    }
+
+    /**
+     * The runner of a kernel: the writer connection comes from the kernel's `dbConnection()`
+     * (a pool, a raw driver handle or none), see {@see ResolveConnection}.
+     */
+    public static function forKernel(DomainKernelInterface $kernel, ValidatorInterface $validator): self
+    {
+        return new self((new ResolveConnection())($kernel), $validator);
     }
 
     /**

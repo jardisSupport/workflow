@@ -12,6 +12,7 @@ use JardisSupport\Workflow\Data\ProcessDefinition;
 use JardisSupport\Workflow\Data\ProcessOutcome;
 use JardisSupport\Workflow\Data\Route;
 use JardisSupport\Workflow\Data\RunRequest;
+use JardisSupport\Workflow\Exception\ConfigurationException;
 use JardisSupport\Workflow\Handler\Transaction\Bracket;
 use JardisSupport\Workflow\ProcessRunner;
 use JardisSupport\Workflow\Tests\Support\Process\Order\OrderInput;
@@ -142,6 +143,55 @@ class BracketTest extends TransactionTestCase
         $this->assertSame(ResponseStatus::Conflict, $outcome->status());
         $this->assertSame([], $this->connection->calls(), '0x beginTransaction, nothing else either');
         $this->assertSame(['a', 'b'], $this->ledger->notes(), 'nothing was rolled back');
+    }
+
+    public function testTransactionalWithoutConnectionIsAConfigurationExceptionAtTheBracket(): void
+    {
+        $bracket = new Bracket(null);
+        $request = RunRequest::of($this->chainOfThree(), new \stdClass(), null, $this->factory([]));
+
+        try {
+            $bracket($request, fn(RunRequest $r): ProcessOutcome => $this->fail('the run must not start'));
+            $this->fail('a transactional process without connection must be refused');
+        } catch (ConfigurationException $e) {
+            $this->assertStringContainsString(Bracket::CONNECTION_MISSING_KEY, $e->getMessage());
+            $this->assertSame('process.connectionMissing', Bracket::CONNECTION_MISSING_KEY);
+        }
+    }
+
+    public function testTransactionalWithoutConnectionAnswers500WithTheConfigurationExceptionAsCause(): void
+    {
+        $built = [];
+
+        $outcome = (new ProcessRunner(null, OrderValidation::validator()))->run(
+            $this->chainOfThree(),
+            new \stdClass(),
+            null,
+            $this->factory([self::A => $this->writes('a')], $built)
+        );
+
+        $this->assertSame(ResponseStatus::InternalError, $outcome->status());
+        $this->assertInstanceOf(ConfigurationException::class, $outcome->cause());
+        $this->assertSame([], $built, 'no node runs');
+        $this->assertSame([], $this->ledger->notes());
+    }
+
+    public function testOptOutWithoutConnectionRunsWithoutBracket(): void
+    {
+        $definition = ProcessDefinition::for('In', 'P')
+            ->transactional(false)
+            ->node(self::A)->terminal()
+            ->build();
+
+        $outcome = (new ProcessRunner(null, OrderValidation::validator()))->run(
+            $definition,
+            new \stdClass(),
+            null,
+            $this->factory([self::A => $this->writes('a', ['k' => 'v'])])
+        );
+
+        $this->assertSame(ResponseStatus::Success, $outcome->status());
+        $this->assertSame(['a'], $this->ledger->notes());
     }
 
     public function testTopLevelRunInAnOpenTransactionWorksInASavepointAndLeavesTheTransactionOpen(): void

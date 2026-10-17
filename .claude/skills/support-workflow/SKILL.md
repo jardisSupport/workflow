@@ -39,7 +39,8 @@ $definition = ProcessDefinition::for(PlaceOrder::class, 'PlaceOrder')   // input
     ->node(ConfirmOrder::class)->terminal()->response(Confirmed::class)
     ->build();
 
-$runner = new ProcessRunner($dbConnection, $validator);          // DbConnectionInterface, ValidatorInterface
+$runner = new ProcessRunner($dbConnection, $validator);          // ?DbConnectionInterface, ValidatorInterface
+$runner = ProcessRunner::forKernel($kernel, $validator);         // writer from $kernel->dbConnection() (pool | PDO | null)
 $outcome = $runner->run($definition, new PlaceOrder('ACME', 2), new Buyer('b-1'), $nodeFactory);
 $outcome->status();   // ResponseStatus::Success
 $outcome->response(); // Confirmed
@@ -50,6 +51,8 @@ $outcome->events();   // caller publishes these AFTER the run (committed)
 
 | Class | Entry points |
 |-------|--------------|
+| `ProcessRunner` | `new ProcessRunner(?DbConnectionInterface, ValidatorInterface)`, `forKernel(DomainKernelInterface, ValidatorInterface)`, `run(definition, input, actor, nodeFactory, parent = null)` |
+| `ResolveConnection` (`Handler/Start/`) | `__invoke(DomainKernelInterface): ?DbConnectionInterface` - pool -> `getWriter()`, `PDO` -> `PdoConnection`, none -> `null` (used by `forKernel`) |
 | `ProcessDefinition` (`Data/ProcessDefinition.php`) | `for(inputClass, name)`, `context`, `transactional(bool)`, `validate`, `actor`, `requires(...)`, `loopLimit(int)` (default 100), `ruleMode(node, RuleMode)`, `node`, `onTrue/onFalse/onSkip/onTimeout/onCancel/onExit(?target)`, `terminal(Route ...)`, `rejects(ResponseStatus, messageKey)`, `response(class, fields...)`, `build()` |
 | `NodeResult` | `ok(array\|object)`, `route(Route, data = null)`, `reject(status, messageKey, context = [], errors = [])`, `withEvents(object ...)`; readers `takenRoute data isRejected status messageKey context errors events` |
 | `ProcessContext` (not final) | `input actor previous latest(node) all(node) iteration(node) chain depth` |
@@ -69,7 +72,7 @@ $outcome->events();   // caller publishes these AFTER the run (committed)
 
 **Failure forms.** 400 `ValidationFailure`, 404 `NotFound`, 409 `Conflict`, 422 `RuleViolation` (built from context keys `fields`, `reason/aggregate/violated`, `rule`); other 4xx `stdClass{messageKey, context}`; 5xx empty `stdClass` + `cause()`. `MapThrowable`: `TransientConflictException` in the owning run -> 409 `process.transientConflict` `{reason: transient}`, in a nested run rethrown; any other Throwable -> 500.
 
-**Transaction (`Bracket`).** Opt-out `transactional(false)`: no bracket. Top-level run, none open: begin/commit-or-rollback. Transaction open (parent's or foreign): savepoint `sp_{depth}`, release on success, rollback-to on >= 400 or exception. Sub-process of a run without transaction: no bracket. A savepoint needs `SavepointInterface`, else `ConfigurationException` (500).
+**Transaction (`Bracket`).** Opt-out `transactional(false)`: no bracket. Top-level run, none open: begin/commit-or-rollback. Transaction open (parent's or foreign): savepoint `sp_{depth}`, release on success, rollback-to on >= 400 or exception. Sub-process of a run without transaction: no bracket. A savepoint needs `SavepointInterface`, else `ConfigurationException` (500). Transactional process and no connection (`null`, kernel without database) -> `ConfigurationException` (500), key `process.connectionMissing`; opt-out runs without a connection.
 
 **Sub-process.** A node calls `$runner->run($inner, $input, $actor, $innerNodes, $context)` (parent = surrounding context), then maps the outcome: >= 500 throw `cause()`, >= 400 reject again or route (dev decision), else `ok((array) response)->withEvents(...$outcome->events())`.
 
@@ -91,13 +94,15 @@ $outcome->events();   // caller publishes these AFTER the run (committed)
 | 4 | `RuleMode::Decision` turns only a 422 into `OnFalse`; a 404 or 409 from the node stays a reject | `Node/ApplyRuleMode.php:35` |
 | 5 | A rejected result drops its events; a run that ends in a reject reports none | `Events/CollectEvents.php:30` |
 | 6 | `route()` with `null` data hands on the previous step's data, `ok([])` does not | `Outcome/PassThrough.php:30` |
-| 7 | An open transaction + connection without `SavepointInterface` -> `ConfigurationException` (500) | `Transaction/Bracket.php:68` |
+| 7 | An open transaction + connection without `SavepointInterface` -> `ConfigurationException` (500) | `Transaction/Bracket.php:84` |
 | 8 | `validate(Class)` never instantiates the class; the injected `ValidatorInterface` does the check | `Start/ValidateInput.php:35` |
 | 9 | The runner never calls `CheckRequires`; the generated handler does, before `run()` | `Start/CheckRequires.php:10-12` ("the runner never does") |
 | 10 | A `TransientConflictException` in a nested run is rethrown; only the owning run answers 409 | `Failure/MapThrowable.php:48` |
 | 11 | The loop limit is checked before the node is built; the exceeding step never runs | `Loop/GuardLoop.php:29` |
 | 12 | After `build()` every mutator throws; a context class must extend `ProcessContext` | `ProcessDefinition.php:343`, `Context/CreateContext.php:24` |
 | 13 | `withEvents()` replaces earlier events of the same result | `NodeResult.php:74` |
+| 14 | A transactional process (the default) on a runner without connection (`forKernel` on a kernel without database) -> `ConfigurationException` (500, `process.connectionMissing`); opt out with `transactional(false)` | `Transaction/Bracket.php` (`CONNECTION_MISSING_KEY`) |
+| 15 | `requires('dbConnection')` is not needed for the transaction - `forKernel()` resolves the writer itself; it only matters when a node uses the connection | `Start/ResolveConnection.php` |
 
 ## Layer rules
 

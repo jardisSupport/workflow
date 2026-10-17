@@ -15,10 +15,10 @@
     "require": {
         "php": ">=8.3",
         "jardissupport/contracts": "^2.12",
+        "jardissupport/repository": "^1.6",
         "jardissupport/scheduling": "^1.2"
     },
     "require-dev": {
-        "jardissupport/repository": "^1.6",
         "jardissupport/validation": "^1.7.1",
         "phpunit/phpunit": "10.5.63",
         "phpstan/phpstan": "2.1.56",

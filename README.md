@@ -22,6 +22,7 @@ Process engine for one request-response use case in PHP. A process is a declared
 - **Typed answers** — every node can declare a response class; the answer of the last node is the answer of the run
 - **Start layers** — input validation (400), actor check (401), required resources (`CheckRequires`)
 - **Transaction bracket** — one transaction per run, savepoint `sp_{depth}` for nested runs, opt-out per process
+- **Kernel entry** — `ProcessRunner::forKernel($kernel, $validator)` takes the writer connection from the kernel (pool, plain PDO or none)
 - **Events at the result** — events travel with the `NodeResult`; the caller publishes them after the commit
 - **Immutable chain** — `ProcessContext` exposes input, actor and the results of the nodes run so far
 - **Strict routing** — a route without a declared key raises `UnroutedStatusException`; an explicit `null` target is a declared end
@@ -35,7 +36,7 @@ Process engine for one request-response use case in PHP. A process is a declared
 composer require jardissupport/workflow
 ```
 
-Requires PHP 8.3+, `jardissupport/contracts` ^2.12 and `jardissupport/scheduling` ^1.2 (clock implementations). The runner needs a `DbConnectionInterface` (for example `PdoConnection` from `jardissupport/repository`) and a `ValidatorInterface` (for example `ObjectValidator` from `jardissupport/validation`).
+Requires PHP 8.3+, `jardissupport/contracts` ^2.12, `jardissupport/repository` ^1.6 (`PdoConnection`, used by `ResolveConnection`) and `jardissupport/scheduling` ^1.2 (clock implementations). The runner needs a `ValidatorInterface` (for example `ObjectValidator` from `jardissupport/validation`) and, for transactional processes, a `DbConnectionInterface` - or a `DomainKernelInterface` that provides one (`ProcessRunner::forKernel()`).
 
 ---
 
@@ -261,7 +262,8 @@ Getters: `getInputClass()`, `getName()`, `getContextClass()`, `isTransactional()
 ## Runner
 
 ```text
-new ProcessRunner(DbConnectionInterface $connection, ValidatorInterface $validator)
+new ProcessRunner(?DbConnectionInterface $connection, ValidatorInterface $validator)
+ProcessRunner::forKernel(DomainKernelInterface $kernel, ValidatorInterface $validator): ProcessRunner
 
 run(
     ProcessDefinition $definition,
@@ -273,6 +275,12 @@ run(
 ```
 
 The runner is pure composition; it holds no state between runs. The node factory is called each time a node is due, also on every loop pass. Layers, outside in: `MapThrowable`, `ValidateInput`, `CheckActor`, `Bracket`, then the core. Around each node: `GuardLoop`, `CollectEvents`, `HydrateResponse`, `PassThrough`, `ApplyRuleMode`.
+
+**Connection.** The connection is optional. `forKernel()` resolves it with `ResolveConnection` from `$kernel->dbConnection()`: a `ConnectionPoolInterface` gives its `getWriter()`, a plain `PDO` is wrapped in `PdoConnection` (transactions and savepoints), no database gives `null`. A transactional process without a connection ends with 500 (`ConfigurationException`, message key `process.connectionMissing`); a process with `transactional(false)` runs without one.
+
+```php
+$runner = ProcessRunner::forKernel($kernel, $validator);   // same as new ProcessRunner((new ResolveConnection())($kernel), $validator)
+```
 
 `ProcessOutcome` (`src/Data/ProcessOutcome.php`): `status(): ResponseStatus`, `response(): object`, `errors(): list<string>`, `events(): list<object>`, `cause(): ?Throwable` (set for an unexpected failure only).
 
@@ -362,7 +370,7 @@ The start is not a node. Before the first node, in this order:
 |-------|-----------|--------|
 | `ValidateInput` | the definition names a validator and the injected `ValidatorInterface` reports findings | 400, `ValidationFailure` with `fields[]` (`field`, `reason`, `message`), message key `process.inputInvalid` |
 | `CheckActor` | the definition names an actor class and the run got none | 401, message key `process.actorMissing` |
-| `Bracket` | transaction on | the run opens its transaction |
+| `Bracket` | transaction on | the run opens its transaction (no connection: 500, `process.connectionMissing`) |
 
 Nodes, context and transaction do not exist for a failed start. Whether the actor *may* do the thing (403) is a decision of the nodes, never of the start.
 
@@ -374,7 +382,7 @@ $outcome = $runner->run($definition, new PlaceOrder('ACME', 1), null, $nodeFacto
 // 401, message key process.actorMissing
 ```
 
-**Required resources.** `requires('auth', 'cache', ...)` names optional accessors of the `DomainKernelInterface` (`cache`, `logger`, `eventDispatcher`, `eventListenerRegistry`, `httpClient`, `dbConnection`, `mailer`, `filesystem`, `messaging`, `auth`). The generated handler, not the runner, calls the check before the run:
+**Required resources.** `requires('auth', 'cache', ...)` names optional accessors of the `DomainKernelInterface` (`cache`, `logger`, `eventDispatcher`, `eventListenerRegistry`, `httpClient`, `dbConnection`, `mailer`, `filesystem`, `messaging`, `auth`). The generated handler, not the runner, calls the check before the run. `requires('dbConnection')` is only needed when a node itself uses the database connection: the runner resolves the connection for the transaction on its own (`forKernel()`), and a missing one is refused by the `Bracket` of a transactional process:
 
 ```text
 (new CheckRequires())(DomainKernelInterface $kernel, array $requires): void
@@ -434,7 +442,8 @@ $reference->children(); // ['lines' => ['L-1', 'L-2']]
 
 | Situation | Behaviour |
 |-----------|-----------|
-| `transactional(false)` | no bracket |
+| `transactional(false)` | no bracket, no connection needed |
+| `transactional` (default) and no connection | `ConfigurationException` (500, message key `process.connectionMissing`) |
 | top-level run, no transaction open | opens and ends its own transaction |
 | a transaction is open (the surrounding run's, or somebody else's) | works in a savepoint `sp_{depth}`; never starts a transaction |
 | sub-process of a run without a transaction | no bracket |

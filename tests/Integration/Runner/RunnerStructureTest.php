@@ -115,7 +115,16 @@ class RunnerStructureTest extends TestCase
 
     public function testPackageHoldsNoPersistenceNoSuspensionAndSendsNoEvents(): void
     {
-        $this->assertSame([], $this->grep('/new ObjectValidator|PDO|ConnectionPool/'), 'no own persistence');
+        // ResolveConnection is the one place that names PDO / pool: it only picks the kernel's writer
+        // (pool -> getWriter, PDO -> repository's PdoConnection); there is no persistence of its own.
+        $this->assertSame(
+            [self::root() . '/src/Handler/Start/ResolveConnection.php'],
+            array_values(array_unique(array_map(
+                static fn(string $hit): string => substr($hit, 0, (int) strrpos($hit, ':')),
+                $this->grep('/new ObjectValidator|PDO|ConnectionPool/')
+            ))),
+            'no own persistence'
+        );
         $this->assertSame([], $this->grep('/resume|suspend|persistState|wait/i'), 'no suspension');
         $this->assertSame([], $this->grep('/publish|dispatch/'), 'events are never sent here');
     }

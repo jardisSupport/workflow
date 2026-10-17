@@ -19,17 +19,22 @@ use JardisSupport\Workflow\Exception\ConfigurationException;
  * starts a transaction; a sub-process of a run without a transaction has no bracket either. A
  * success commits (releases the savepoint), an answer of 400 and above or an exception rolls back
  * (to the savepoint) - an exception is thrown on. A savepoint needs a connection that supports
- * them, else it is a configuration error.
+ * them, else it is a configuration error. A transactional process without any connection (the
+ * kernel has no database) is a configuration error too, key {@see self::CONNECTION_MISSING_KEY};
+ * an opted-out process needs none.
  */
 final class Bracket
 {
-    public function __construct(private readonly DbConnectionInterface $connection)
+    public const CONNECTION_MISSING_KEY = 'process.connectionMissing';
+
+    public function __construct(private readonly ?DbConnectionInterface $connection)
     {
     }
 
     /**
      * @param \Closure(RunRequest): ProcessOutcome $next
-     * @throws ConfigurationException when a savepoint is needed and the connection has no savepoints
+     * @throws ConfigurationException when the process is transactional and there is no connection, or a
+     *                                savepoint is needed and the connection has no savepoints
      */
     public function __invoke(RunRequest $request, \Closure $next): ProcessOutcome
     {
@@ -37,34 +42,45 @@ final class Bracket
             return $next($request);
         }
 
-        if ($this->connection->inTransaction()) {
-            return $this->savepoint($request, $next);
+        $connection = $this->connection ?? throw new ConfigurationException(sprintf(
+            '%s: process "%s" is transactional but the runner has no database connection',
+            self::CONNECTION_MISSING_KEY,
+            $request->definition->getName()
+        ));
+
+        if ($connection->inTransaction()) {
+            return $this->savepoint($request, $next, $connection);
         }
 
-        return $request->parent === null ? $this->transaction($request, $next) : $next($request);
+        return $request->parent === null ? $this->transaction($request, $next, $connection) : $next($request);
     }
 
     /**
      * @param \Closure(RunRequest): ProcessOutcome $next
      */
-    private function transaction(RunRequest $request, \Closure $next): ProcessOutcome
-    {
-        $this->connection->beginTransaction();
+    private function transaction(
+        RunRequest $request,
+        \Closure $next,
+        DbConnectionInterface $connection
+    ): ProcessOutcome {
+        $connection->beginTransaction();
 
         return $this->settle(
             $request,
             $next,
-            fn() => $this->connection->commit(),
-            fn() => $this->connection->rollback()
+            static fn() => $connection->commit(),
+            static fn() => $connection->rollback()
         );
     }
 
     /**
      * @param \Closure(RunRequest): ProcessOutcome $next
      */
-    private function savepoint(RunRequest $request, \Closure $next): ProcessOutcome
-    {
-        $connection = $this->connection;
+    private function savepoint(
+        RunRequest $request,
+        \Closure $next,
+        DbConnectionInterface $connection
+    ): ProcessOutcome {
         if (!$connection instanceof SavepointInterface) {
             throw new ConfigurationException(sprintf(
                 'Process "%s" runs inside a transaction and needs savepoints, but %s offers none',
