@@ -54,6 +54,25 @@ class FailureFormTest extends TestCase
         $this->assertFinalReadonly($failure);
     }
 
+    public function testConflictCarriesReasonAggregateAndViolatedConstraints(): void
+    {
+        $failure = new Conflict('order.stale', ['orderNo' => 'A-1'], 'stale', 'order', ['uq_order_number']);
+
+        $this->assertSame('stale', $failure->reason());
+        $this->assertSame('order', $failure->aggregate());
+        $this->assertSame(['uq_order_number'], $failure->violated());
+        $this->assertNull((new Conflict('k'))->reason());
+        $this->assertNull((new Conflict('k'))->aggregate());
+        $this->assertSame([], (new Conflict('k'))->violated());
+    }
+
+    public function testValidationFieldMayCarryItsOwnMessageKey(): void
+    {
+        $fields = [['field' => 'qty', 'reason' => 'invalid', 'message' => 'Too small', 'messageKey' => 'order.qty.min']];
+
+        $this->assertSame($fields, (new ValidationFailure('input.invalid', $fields))->fields());
+    }
+
     public function testRuleViolationIs422WithRuleName(): void
     {
         $failure = new RuleViolation('StockAvailable', 'stock.insufficient', ['sku' => 'S-9']);

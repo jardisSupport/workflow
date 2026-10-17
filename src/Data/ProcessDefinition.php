@@ -34,6 +34,8 @@ final class ProcessDefinition
     private array $rejects = [];
     /** @var array<string, list<string>> */
     private array $responses = [];
+    /** @var array<string, string> */
+    private array $responseClasses = [];
     private WorkflowConfigBuilder $configBuilder;
     private ?WorkflowConfig $config = null;
 
@@ -189,10 +191,19 @@ final class ProcessDefinition
         return $this;
     }
 
-    /** Restricts the success answer of the current node to the given fields. */
-    public function response(string ...$fields): self
+    /**
+     * Declares the typed answer of the current node: the response class and the subset of its
+     * constructor fields taken from the node data (none named = all fields).
+     *
+     * @throws ConstructionException on an empty class name
+     */
+    public function response(string $responseClass, string ...$fields): self
     {
         $node = $this->requireCurrentNode();
+        if ($responseClass === '') {
+            throw new ConstructionException(sprintf('response() of node "%s" needs a response class', $node));
+        }
+        $this->responseClasses[$node] = $responseClass;
         $this->responses[$node] = array_values($fields);
 
         return $this;
@@ -283,11 +294,20 @@ final class ProcessDefinition
     }
 
     /**
-     * @return list<string>|null null when the node declares no response restriction
+     * @return list<string>|null the declared field subset (empty = all fields); null when the node
+     *                           declares no response
      */
     public function getResponse(string $node): ?array
     {
         return $this->responses[$node] ?? null;
+    }
+
+    /**
+     * @return string|null the declared response class; null when the node declares none
+     */
+    public function getResponseClass(string $node): ?string
+    {
+        return $this->responseClasses[$node] ?? null;
     }
 
     /**

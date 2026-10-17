@@ -9,16 +9,21 @@ use JardisSupport\Workflow\Data\NodeResult;
 use JardisSupport\Workflow\Data\ProcessContext;
 use JardisSupport\Workflow\Data\ProcessOutcome;
 use JardisSupport\Workflow\Exception\ConstructionException;
+use JardisSupport\Workflow\Handler\Failure\BuildFailureOutcome;
 
 /**
  * Builds the final {@see ProcessOutcome} from the finished run.
  *
  * Success: status 200, the data of the last step as response object, the events of all steps in
- * execution order. Reject: the status and errors of the rejecting step, no events, and a
- * placeholder response carrying messageKey and context (the failure form follows later).
+ * execution order. Reject: the failure answer of the rejecting step ({@see BuildFailureOutcome}),
+ * no events.
  */
 final class BuildOutcome
 {
+    public function __construct(private readonly BuildFailureOutcome $buildFailureOutcome = new BuildFailureOutcome())
+    {
+    }
+
     /**
      * @throws ConstructionException on a run without steps or data that is neither array nor object
      */
@@ -27,9 +32,10 @@ final class BuildOutcome
         $last = $context->previous() ?? throw new ConstructionException('A finished run has at least one step');
         $status = $last->status();
         if ($last->isRejected() && $status !== null) {
-            return new ProcessOutcome(
+            return ($this->buildFailureOutcome)(
                 $status,
-                (object) ['messageKey' => $last->messageKey(), 'context' => $last->context()],
+                (string) $last->messageKey(),
+                $last->context(),
                 $last->errors()
             );
         }

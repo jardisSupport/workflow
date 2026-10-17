@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace JardisSupport\Workflow\Tests\Integration\Runner;
 
 use JardisSupport\Contract\Kernel\ResponseStatus;
+use JardisSupport\Workflow\Data\Failure\Conflict;
 use JardisSupport\Workflow\Data\NodeResult;
 use JardisSupport\Workflow\Data\ProcessContext;
 use JardisSupport\Workflow\Data\ProcessDefinition;
@@ -63,7 +64,7 @@ class EventsAndAnswerTest extends RunnerTestCase
         $this->assertSame(ResponseStatus::Conflict, $outcome->status());
         $this->assertSame([], $outcome->events());
         $this->assertSame(['clash'], $outcome->errors());
-        $this->assertEquals((object) ['messageKey' => 'p.clash', 'context' => ['field' => 'x']], $outcome->response());
+        $this->assertEquals(new Conflict('p.clash', ['field' => 'x'], '', '', []), $outcome->response());
     }
 
     public function testRuleWithoutDeclarationRejectsWith422AndNothingFollows(): void

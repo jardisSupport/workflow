@@ -252,10 +252,22 @@ class ProcessDefinitionTest extends TestCase
 
     public function testResponseRecordsTheFieldSubsetPerNode(): void
     {
-        $definition = $this->minimal()->response('id', 'email');
+        $definition = $this->minimal()->response(\stdClass::class, 'id', 'email');
 
         $this->assertSame(['id', 'email'], $definition->getResponse(self::A));
+        $this->assertSame(\stdClass::class, $definition->getResponseClass(self::A));
         $this->assertNull($definition->getResponse(self::B));
+        $this->assertNull($definition->getResponseClass(self::B));
+    }
+
+    public function testResponseWithoutFieldsMeansAllFieldsAndAnEmptyClassFails(): void
+    {
+        $definition = $this->minimal()->response(\stdClass::class);
+
+        $this->assertSame([], $definition->getResponse(self::A));
+
+        $this->expectException(ConstructionException::class);
+        $this->minimal()->response('');
     }
 
     public function testNodeScopedDeclarationsBeforeAnyNodeFailConstruction(): void
@@ -266,7 +278,7 @@ class ProcessDefinitionTest extends TestCase
             static fn () => $definition->onTrue(null),
             static fn () => $definition->terminal(),
             static fn () => $definition->rejects(ResponseStatus::NotFound, 'k'),
-            static fn () => $definition->response('id'),
+            static fn () => $definition->response(\stdClass::class, 'id'),
         ] as $call) {
             try {
                 $call();
@@ -334,7 +346,7 @@ class ProcessDefinitionTest extends TestCase
             'onExit' => [static fn (ProcessDefinition $d) => $d->onExit(null)],
             'terminal' => [static fn (ProcessDefinition $d) => $d->terminal()],
             'rejects' => [static fn (ProcessDefinition $d) => $d->rejects(ResponseStatus::NotFound, 'k')],
-            'response' => [static fn (ProcessDefinition $d) => $d->response('id')],
+            'response' => [static fn (ProcessDefinition $d) => $d->response(\stdClass::class, 'id')],
         ];
     }
 }

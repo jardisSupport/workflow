@@ -12,7 +12,7 @@ use JardisSupport\Contract\Kernel\ResponseStatus;
 final readonly class ValidationFailure implements FailureForm
 {
     /**
-     * @param list<array{field: string, reason: string, message: string}> $fields
+     * @param list<array{field: string, reason: string, message: string, messageKey?: string}> $fields
      * @param array<string, mixed> $context
      */
     public function __construct(
@@ -41,7 +41,7 @@ final readonly class ValidationFailure implements FailureForm
     }
 
     /**
-     * @return list<array{field: string, reason: string, message: string}>
+     * @return list<array{field: string, reason: string, message: string, messageKey?: string}>
      */
     public function fields(): array
     {

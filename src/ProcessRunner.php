@@ -14,30 +14,44 @@ use JardisSupport\Workflow\Data\RunRequest;
 use JardisSupport\Workflow\Handler\Context\CreateContext;
 use JardisSupport\Workflow\Handler\Context\HydrateResponse;
 use JardisSupport\Workflow\Handler\Events\CollectEvents;
+use JardisSupport\Workflow\Handler\Failure\BuildFailureForm;
+use JardisSupport\Workflow\Handler\Failure\BuildFailureOutcome;
+use JardisSupport\Workflow\Handler\Failure\MapThrowable;
 use JardisSupport\Workflow\Handler\Loop\GuardLoop;
+use JardisSupport\Workflow\Handler\Node\ApplyRuleMode;
 use JardisSupport\Workflow\Handler\Outcome\BuildOutcome;
 use JardisSupport\Workflow\Handler\Outcome\ExecuteProcess;
 use JardisSupport\Workflow\Handler\Outcome\PassThrough;
 use JardisSupport\Workflow\Handler\Routing\Workflow;
+use JardisSupport\Workflow\Handler\Start\CheckActor;
+use JardisSupport\Workflow\Handler\Start\ValidateInput;
+use JardisSupport\Workflow\Handler\Transaction\Bracket;
 
 /**
  * Runs a process definition and answers with a {@see ProcessOutcome}.
  *
- * Pure composition, no logic of its own: each node is wrapped, outside in, by GuardLoop,
- * CollectEvents, HydrateResponse and PassThrough; the engine walks the graph over that chain
- * and BuildOutcome turns the finished run into the answer.
+ * Pure composition, no logic of its own. Each node is wrapped, outside in, by GuardLoop,
+ * CollectEvents, HydrateResponse, PassThrough and ApplyRuleMode; the engine walks the graph over
+ * that chain and BuildOutcome turns the finished run into the answer. The run itself sits in
+ * layers, outside in: MapThrowable, ValidateInput, CheckActor, Bracket, then the core.
  */
 final class ProcessRunner
 {
     /** @var \Closure(RunRequest): ProcessOutcome */
     private \Closure $execution;
 
-    // Both collaborators are used by the start and transaction layers that wrap the core.
-    // @phpstan-ignore constructor.unusedParameter, constructor.unusedParameter
     public function __construct(DbConnectionInterface $connection, ValidatorInterface $validator)
     {
+        $buildFailureForm = new BuildFailureForm();
+        $buildFailureOutcome = new BuildFailureOutcome($buildFailureForm);
         $chain = array_reduce(
-            array_reverse([new GuardLoop(), new CollectEvents(), new HydrateResponse(), new PassThrough()]),
+            array_reverse([
+                new GuardLoop(),
+                new CollectEvents(),
+                new HydrateResponse(),
+                new PassThrough(),
+                new ApplyRuleMode(),
+            ]),
             static fn(\Closure $inner, callable $decorator): \Closure => static fn(
                 ProcessDefinition $definition,
                 string $node,
@@ -52,8 +66,25 @@ final class ProcessRunner
             static fn(ProcessDefinition $definition, string $node, ProcessContext $context, \Closure $call): NodeResult
                 => $call($context)
         );
+        $core = new ExecuteProcess(
+            new CreateContext(),
+            new Workflow(),
+            $chain,
+            new BuildOutcome($buildFailureOutcome)
+        );
 
-        $this->execution = (new ExecuteProcess(new CreateContext(), new Workflow(), $chain, new BuildOutcome()))(...);
+        $this->execution = array_reduce(
+            array_reverse([
+                new MapThrowable($buildFailureOutcome),
+                new ValidateInput($validator, $buildFailureOutcome),
+                new CheckActor($buildFailureOutcome),
+                new Bracket($connection),
+            ]),
+            static fn(\Closure $inner, callable $layer): \Closure => static fn(
+                RunRequest $request
+            ): ProcessOutcome => $layer($request, $inner),
+            $core(...)
+        );
     }
 
     /**

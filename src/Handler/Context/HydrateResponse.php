@@ -12,11 +12,12 @@ use JardisSupport\Workflow\Exception\ConstructionException;
 /**
  * Node decorator: turns the array data of a node into its typed response object.
  *
- * Applies only to a routed result with array data of a node whose definition declares a
- * response. The response class is derived from the node class (`...\Command\{Name}` becomes
- * `...\Response\{Name}Response`) and built through its constructor with named arguments taken
- * from the declared fields. A required constructor argument without a value is a
- * {@see ConstructionException}. Everything else passes unchanged, events and route included.
+ * Applies only to a routed result with array data of a node whose definition declares a response
+ * class; without a declaration the data stays as it is. The object is built through the constructor
+ * of the declared class with named arguments taken from the declared fields (none declared = all
+ * constructor fields). A required constructor argument without a value, or a declared class that
+ * does not exist, is a {@see ConstructionException}. Everything else passes unchanged, events and
+ * route included.
  */
 final class HydrateResponse
 {
@@ -31,28 +32,37 @@ final class HydrateResponse
         \Closure $next
     ): NodeResult {
         $result = $next($context);
-        $fields = $definition->getResponse($node);
+        $class = $definition->getResponseClass($node);
         $route = $result->takenRoute();
         $data = $result->data();
-        if ($fields === null || $route === null || !is_array($data)) {
+        if ($class === null || $route === null || !is_array($data)) {
             return $result;
         }
 
-        return NodeResult::route($route, $this->build($node, $fields, $data))->withEvents(...$result->events());
+        return NodeResult::route($route, $this->build($node, $class, $definition->getResponse($node) ?? [], $data))
+            ->withEvents(...$result->events());
     }
 
     /**
      * @param list<string> $fields
      * @param array<array-key, mixed> $data
+     * @throws ConstructionException
      */
-    private function build(string $node, array $fields, array $data): object
+    private function build(string $node, string $class, array $fields, array $data): object
     {
-        $class = $this->responseClass($node);
+        if (!class_exists($class)) {
+            throw new ConstructionException(sprintf(
+                'Node %s declares the response class %s, which does not exist',
+                $node,
+                $class
+            ));
+        }
         $constructor = (new \ReflectionClass($class))->getConstructor();
         $arguments = [];
         foreach ($constructor?->getParameters() ?? [] as $parameter) {
             $name = $parameter->getName();
-            if (in_array($name, $fields, true) && array_key_exists($name, $data)) {
+            $declared = $fields === [] || in_array($name, $fields, true);
+            if ($declared && array_key_exists($name, $data)) {
                 $arguments[$name] = $data[$name];
             } elseif (!$parameter->isOptional()) {
                 throw new ConstructionException(sprintf(
@@ -65,23 +75,5 @@ final class HydrateResponse
         }
 
         return new $class(...$arguments);
-    }
-
-    /**
-     * @return class-string
-     * @throws ConstructionException when the node class has no resolvable response class
-     */
-    private function responseClass(string $node): string
-    {
-        $class = preg_replace('/\\\\Command\\\\([^\\\\]+)$/', '\\\\Response\\\\$1Response', $node);
-        if ($class === null || $class === $node || !class_exists($class)) {
-            throw new ConstructionException(sprintf(
-                'Node %s declares a response, but its response class (%s) does not exist',
-                $node,
-                $class ?? '?'
-            ));
-        }
-
-        return $class;
     }
 }
