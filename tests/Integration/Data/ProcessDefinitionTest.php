@@ -243,6 +243,21 @@ class ProcessDefinitionTest extends TestCase
         $this->assertSame([], $definition->getRejects(self::B));
     }
 
+    public function testInputRecordsThePropertyPerNode(): void
+    {
+        $definition = $this->minimal()->input('customer');
+
+        $this->assertSame('customer', $definition->getInput(self::A));
+        $this->assertNull($definition->getInput(self::B));
+    }
+
+    public function testInputWithEmptyPropertyFailsConstruction(): void
+    {
+        $this->expectException(ConstructionException::class);
+
+        $this->minimal()->input('');
+    }
+
     public function testRejectsWithNon4xxStatusFailsConstruction(): void
     {
         $this->expectException(ConstructionException::class);

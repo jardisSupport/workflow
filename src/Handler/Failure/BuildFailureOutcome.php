@@ -12,7 +12,8 @@ use JardisSupport\Workflow\Data\ProcessOutcome;
  *
  * The response is the failure form of the status ({@see BuildFailureForm}). A 4xx without a form
  * answers with the message key and the context as they are, a 5xx with an empty object. A failed
- * run reports no events; an unexpected failure carries its cause.
+ * run reports no events; an unexpected failure carries its cause. A reject of a node is `declared`:
+ * its message key is the one the node named and is carried on the outcome.
  */
 final class BuildFailureOutcome
 {
@@ -29,13 +30,14 @@ final class BuildFailureOutcome
         string $messageKey,
         array $context = [],
         array $errors = [],
-        ?\Throwable $cause = null
+        ?\Throwable $cause = null,
+        bool $declared = false
     ): ProcessOutcome {
         $form = ($this->buildFailureForm)($status, $messageKey, $context, $errors);
         $response = $form ?? ($status->value < 500
             ? (object) ['messageKey' => $messageKey, 'context' => $context]
             : new \stdClass());
 
-        return new ProcessOutcome($status, $response, $errors, [], $cause);
+        return new ProcessOutcome($status, $response, $errors, [], $cause, $declared ? $messageKey : null);
     }
 }

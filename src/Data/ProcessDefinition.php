@@ -32,6 +32,8 @@ final class ProcessDefinition
     private array $ruleModes = [];
     /** @var array<string, list<array{status: ResponseStatus, messageKey: string}>> */
     private array $rejects = [];
+    /** @var array<string, string> */
+    private array $inputs = [];
     /** @var array<string, list<string>> */
     private array $responses = [];
     /** @var array<string, string> */
@@ -192,6 +194,23 @@ final class ProcessDefinition
     }
 
     /**
+     * Names the process input property that feeds the current node: a 400 reject of this node
+     * answers its field paths below that property (`customer.email` for the finding `email`).
+     *
+     * @throws ConstructionException on an empty property name
+     */
+    public function input(string $property): self
+    {
+        $node = $this->requireCurrentNode();
+        if ($property === '') {
+            throw new ConstructionException('input() needs a non-empty property name');
+        }
+        $this->inputs[$node] = $property;
+
+        return $this;
+    }
+
+    /**
      * Declares the typed answer of the current node: the response class and the subset of its
      * constructor fields taken from the node data (none named = all fields).
      *
@@ -291,6 +310,14 @@ final class ProcessDefinition
     public function getRejects(string $node): array
     {
         return $this->rejects[$node] ?? [];
+    }
+
+    /**
+     * @return string|null the input property that feeds the node; null when none is named
+     */
+    public function getInput(string $node): ?string
+    {
+        return $this->inputs[$node] ?? null;
     }
 
     /**
