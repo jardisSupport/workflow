@@ -1,0 +1,56 @@
+{
+    "_provenance": {
+        "recordedFrom": "pre-move generated classes (Ecommerce\\Response), run once, then frozen",
+        "builderCommit": "e72b2b5281bb7e41b89a5a3b95ad093657e627e8",
+        "sourceSha256": {
+            "tests/Builder/Generated/Domain/Ecommerce/Response/ContextResponse.php": "7cd81af703e0221b41f90a4e8d29e06d39ea7fe5821231f0626df16e0f20e417",
+            "tests/Builder/Generated/Domain/Ecommerce/Response/DomainResponse.php": "e141694a57defdc72b601c91426b94add291083b97cc242e4dccd6567f9add4c",
+            "tests/Builder/Generated/Domain/Ecommerce/Response/DomainResponseTransformer.php": "4741f44363276ce3be64885c72adb96024fe0c66d8fc2ac01caf2247739655fe",
+            "tests/Builder/Generated/Domain/Ecommerce/Response/ValidationPayload.php": "b0ef417940bf3595db41e4104bf5a36b63c12799cf05d2d049c1796ca52d3b8d",
+            "tests/Builder/Generated/Domain/Ecommerce/Response/NotFoundPayload.php": "c499bef3681fac6d10c3da09c33f41aa92e002ad15565bd592f410a220fbcff5",
+            "tests/Builder/Generated/Domain/Ecommerce/Response/ConcurrencyConflictPayload.php": "4812df7c85eceeec42af1fa475011cdb70aa8295b7b19aaf41d6de36a292b7ce",
+            "tests/Builder/Generated/Domain/Ecommerce/Response/RuleViolationPayload.php": "8fbc3bb489be2ee8c58b968f23fb3a184462f44d2f91d967bcb2cdcd315784de"
+        },
+        "normalised": "meta.duration = 0.0 and meta.timestamp = 2026-01-15T10:30:00+00:00 (the pre-move code reads microtime()/date() and has no clock seam); everything else is the recorded output",
+        "bodySha256": "67396c9e7e892e78a57ce49d03f7a9bfdcdc7d2df3d8f8931d753c2a6b1232f8",
+        "eventsSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+    },
+    "body": {
+        "status": 400,
+        "data": {
+            "@type": "validation",
+            "fields": [
+                {
+                    "field": "email",
+                    "reason": "missing",
+                    "message": "Required",
+                    "messageKey": "order.email.missing"
+                },
+                {
+                    "field": "items[1].qty",
+                    "reason": "min",
+                    "message": "Must be at least 1",
+                    "messageKey": "order.qty.min"
+                }
+            ]
+        },
+        "errors": {
+            "order": [
+                "email is required"
+            ],
+            "validator": [
+                "items[1].qty must be at least 1"
+            ]
+        },
+        "meta": {
+            "duration": 0.0,
+            "contexts": [
+                "order",
+                "validator"
+            ],
+            "timestamp": "2026-01-15T10:30:00+00:00",
+            "version": ""
+        }
+    },
+    "events": {}
+}
