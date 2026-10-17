@@ -11,9 +11,16 @@ use JardisSupport\Workflow\Data\NodeResult;
 /**
  * Maps the answer of a called domain operation to a node result.
  *
- * 2xx becomes a success carrying the data, 4xx a reject with the message key the callee named
- * in its data (empty when it named none); the callee's error messages are flattened into one list,
- * their field keys are dropped. Every other status is a technical failure and throws.
+ * 2xx becomes a success carrying the data. 4xx becomes a reject whose context is the plain context
+ * of the callee: the form of the callee's data is unpacked (`@type` dropped, the inner `context`
+ * lifted, the form's own fields - 400 `fields`, 409 `reason`/`aggregate`/`violated`, 422 `rule` - kept
+ * as the keys {@see \JardisSupport\Workflow\Handler\Failure\BuildFailureForm} reads), so the process
+ * answers the same form again. The callee's message key travels only where its form carries one
+ * (422); for 400, 404 and 409 it is left to the node's declaration
+ * ({@see \JardisSupport\Workflow\Data\ProcessDefinition::rejects()}). Any other 4xx (401, 403, ...)
+ * has no form: its data passes through unchanged as the context, a key in it stays where it is.
+ * The callee's error messages are flattened into one list, their field keys are dropped. Every
+ * other status is a technical failure and throws.
  */
 final class MapResponse
 {
@@ -25,16 +32,60 @@ final class MapResponse
         $status = $response->getStatus();
         $data = $response->getData();
         $reject = ResponseStatus::tryFrom($status);
+        if ($status >= 200 && $status < 300) {
+            return NodeResult::ok($data);
+        }
+        if ($status < 400 || $status >= 500 || $reject === null) {
+            throw new \RuntimeException(sprintf('Operation answered with status %d', $status));
+        }
 
-        return match (true) {
-            $status >= 200 && $status < 300 => NodeResult::ok($data),
-            $status >= 400 && $status < 500 && $reject !== null => NodeResult::reject(
-                $reject,
-                is_string($data['messageKey'] ?? null) ? $data['messageKey'] : '',
-                array_diff_key($data, ['messageKey' => true]),
-                array_merge([], ...array_values($response->getErrors()))
-            ),
-            default => throw new \RuntimeException(sprintf('Operation answered with status %d', $status)),
+        return NodeResult::reject(
+            $reject,
+            $this->messageKey($reject, $data),
+            $this->context($reject, $data),
+            array_merge([], ...array_values($response->getErrors()))
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    private function messageKey(ResponseStatus $status, array $data): string
+    {
+        return $status === ResponseStatus::RuleViolation && is_string($data['messageKey'] ?? null)
+            ? $data['messageKey']
+            : '';
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    private function context(ResponseStatus $status, array $data): array
+    {
+        return match ($status) {
+            ResponseStatus::ValidationError => array_intersect_key($data, ['fields' => true]),
+            ResponseStatus::NotFound => $this->plain($data),
+            ResponseStatus::Conflict => array_intersect_key(
+                $data,
+                ['reason' => true, 'aggregate' => true, 'violated' => true]
+            ) + $this->plain($data),
+            ResponseStatus::RuleViolation => array_intersect_key($data, ['rule' => true]) + $this->plain($data),
+            default => $data,
         };
+    }
+
+    /**
+     * The inner `context` of a callee's form as an array (an empty one arrives as an object).
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    private function plain(array $data): array
+    {
+        $context = $data['context'] ?? [];
+        $context = is_object($context) ? get_object_vars($context) : $context;
+
+        return is_array($context) ? $context : [];
     }
 }

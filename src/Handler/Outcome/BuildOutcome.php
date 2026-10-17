@@ -17,8 +17,10 @@ use JardisSupport\Workflow\Handler\Failure\BuildFailureOutcome;
  *
  * Success: status 200, the data of the last step as response object, the events of all steps in
  * execution order. Reject: the failure answer of the rejecting step ({@see BuildFailureOutcome}),
- * no events; its message key is the declared one, and a 400 below a declared input property
- * ({@see ProcessDefinition::input()}) answers its field paths below that property.
+ * no events; its message key is the one the node declared for that status
+ * ({@see ProcessDefinition::rejects()}) or, when it declared none, the one the reject carries.
+ * A 400 below a declared input property ({@see ProcessDefinition::input()}) answers its field
+ * paths below that property.
  */
 final class BuildOutcome
 {
@@ -34,10 +36,12 @@ final class BuildOutcome
         $last = $context->previous() ?? throw new ConstructionException('A finished run has at least one step');
         $status = $last->status();
         if ($last->isRejected() && $status !== null) {
+            $node = $this->lastNode($context);
+
             return ($this->buildFailureOutcome)(
                 $status,
-                (string) $last->messageKey(),
-                $this->prefixed($status, $last->context(), $definition?->getInput($this->lastNode($context))),
+                $this->declaredKey($definition, $node, $status) ?? (string) $last->messageKey(),
+                $this->prefixed($status, $last->context(), $definition?->getInput($node)),
                 $last->errors(),
                 null,
                 true
@@ -45,6 +49,20 @@ final class BuildOutcome
         }
 
         return new ProcessOutcome(ResponseStatus::Success, $this->response($last), [], $this->events($context));
+    }
+
+    /**
+     * The message key the node declared for the status; null when the node declared none.
+     */
+    private function declaredKey(?ProcessDefinition $definition, string $node, ResponseStatus $status): ?string
+    {
+        foreach ($definition?->getRejects($node) ?? [] as $reject) {
+            if ($reject['status'] === $status) {
+                return $reject['messageKey'];
+            }
+        }
+
+        return null;
     }
 
     private function lastNode(ProcessContext $context): string
