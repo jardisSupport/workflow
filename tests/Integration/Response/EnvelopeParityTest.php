@@ -11,14 +11,17 @@ use JardisSupport\Contract\Kernel\DomainResponseInterface;
 use JardisSupport\Contract\Kernel\EventScope;
 use JardisSupport\Contract\Kernel\ResponseStatus;
 use JardisSupport\Scheduling\Clock\FixedClock;
+use JardisSupport\Workflow\Data\Failure\Conflict;
+use JardisSupport\Workflow\Data\Failure\FailureForm;
 use JardisSupport\Workflow\Data\Failure\NotFound;
 use JardisSupport\Workflow\Data\Failure\RuleViolation;
 use JardisSupport\Workflow\Data\Failure\ValidationFailure;
+use JardisSupport\Workflow\Data\ProcessOutcome;
 use JardisSupport\Workflow\Data\Response\ContextResponse;
+use JardisSupport\Workflow\Handler\Response\BuildResponseData;
 use JardisSupport\Workflow\Handler\Response\TransformResponse;
 use JardisSupport\Workflow\Tests\Support\EnvelopeCases;
 use JardisSupport\Workflow\Tests\Support\EnvelopeJson;
-use JardisSupport\Workflow\Tests\Support\FailureData;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -48,7 +51,7 @@ class EnvelopeParityTest extends TestCase
     public function testValidationEnvelopeIsByteIdentical(): void
     {
         $args = $this->args('validation');
-        $data = FailureData::of(new ValidationFailure('order.invalid', $args['fields']));
+        $data = $this->data(new ValidationFailure('order.invalid', $args['fields']));
 
         $response = $this->transform('validation', $data);
 
@@ -59,7 +62,7 @@ class EnvelopeParityTest extends TestCase
     public function testNotFoundEnvelopeIsByteIdentical(): void
     {
         $args = $this->args('notFound');
-        $data = FailureData::of(new NotFound('order.notFound', $args['context']));
+        $data = $this->data(new NotFound('order.notFound', $args['context']));
 
         $response = $this->transform('notFound', $data);
 
@@ -69,9 +72,14 @@ class EnvelopeParityTest extends TestCase
 
     public function testConflictEnvelopeIsByteIdentical(): void
     {
-        // The Conflict DTO carries no reason/aggregate/violated: the data comes from the fixture itself.
-        $data = $this->fixture('conflict', true)['body']['data'];
-        $this->assertSame('concurrencyConflict', $data['@type']);
+        $args = $this->args('conflict');
+        $data = $this->data(new Conflict(
+            'order.conflict',
+            $args['context'],
+            $args['reason'],
+            $args['aggregate'],
+            $args['violated']
+        ));
 
         $response = $this->transform('conflict', $data);
 
@@ -82,7 +90,7 @@ class EnvelopeParityTest extends TestCase
     public function testRuleViolationEnvelopeIsByteIdentical(): void
     {
         $args = $this->args('ruleViolation');
-        $data = FailureData::of(new RuleViolation($args['rule'], $args['messageKey'], $args['context']));
+        $data = $this->data(new RuleViolation($args['rule'], $args['messageKey'], $args['context']));
 
         $response = $this->transform('ruleViolation', $data);
 
@@ -147,6 +155,16 @@ class EnvelopeParityTest extends TestCase
         $status = $definition['status'] === null ? null : ResponseStatus::from($definition['status']);
 
         return (new TransformResponse($this->clock(), $definition['version']))($root, $status);
+    }
+
+    /**
+     * The `data` of the failure answer, built by the package from the failure form.
+     *
+     * @return array<string, mixed>
+     */
+    private function data(FailureForm $form): array
+    {
+        return (new BuildResponseData())(new ProcessOutcome($form->status(), $form), 'order');
     }
 
     private function bytes(DomainResponseInterface $response): string

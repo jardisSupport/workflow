@@ -47,7 +47,8 @@ final class ExecuteProcess
         };
 
         return ($this->buildOutcome)(
-            ($this->engine)($request->definition->config(), $step, ($this->createContext)($request))
+            ($this->engine)($request->definition->config(), $step, ($this->createContext)($request)),
+            $request->definition
         );
     }
 }

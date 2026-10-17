@@ -207,7 +207,7 @@ $definition = ProcessDefinition::for(PlaceOrder::class, 'PlaceOrder')
     ->build();
 ```
 
-The first `node()` is the entry node. `onTrue(...)` and friends, `terminal()`, `rejects()` and `response()` apply to the node declared last. After `build()` every mutator throws a `ConstructionException`.
+The first `node()` is the entry node. `onTrue(...)` and friends, `terminal()`, `rejects()`, `input()` and `response()` apply to the node declared last. After `build()` every mutator throws a `ConstructionException`.
 
 ### Run
 
@@ -250,6 +250,7 @@ $outcome->events();   // [OrderPlaced {orderNo: 'O-A-1'}]
 | `onTrue` / `onFalse` / `onSkip` / `onTimeout` / `onCancel` / `onExit` `(?string $target)` | Route of the current node; `null` declares a terminal end |
 | `terminal(Route ...$routes)` | Terminal end for the given routes (none given: `onTrue`) |
 | `rejects(ResponseStatus $status, string $messageKey)` | Declare a 4xx the current node may reject with (non-4xx throws) |
+| `input(string $property)` | Name the process input property that feeds the current node; its 400 rejects answer field paths below it |
 | `response(string $responseClass, string ...$fields)` | Typed answer of the current node, see below |
 | `build()` | Validate the graph (unknown targets, unknown rule-mode node) and freeze |
 
@@ -410,7 +411,7 @@ All forms implement `FailureForm` (`status()`, `messageKey()`, `context()`). A f
 
 | Thrown | Answer |
 |--------|--------|
-| `TransientConflictException` in the owning run | 409, message key `process.transientConflict`, context `{reason: 'transient'}` |
+| `TransientConflictException` in the owning run | 409, message key `process.transientConflict`, context `{reason: 'stale_write', aggregate: <process name>}` |
 | `TransientConflictException` in a nested run | thrown on; the owner repeats the unit of work |
 | every other `Throwable` (construction, configuration, loop limit, unrouted route, ...) | 500, empty object, throwable as `cause()` |
 
@@ -420,6 +421,29 @@ Message keys of the package: `process.inputInvalid` (400), `process.actorMissing
 $outcome = $runner->run($definition, new PlaceOrder('ACME', 500), new Buyer('b-1'), $nodeFactory);
 // 422, response RuleViolation {rule: 'CreditLimit', messageKey: 'order.creditExceeded'}; nothing was written
 ```
+
+**Data of the envelope.** `BuildResponseData` turns the outcome into the `data` array of the envelope, the one place the wire form of an answer is shaped. The generated handler sets it on the context response; `TransformResponse` then wraps it:
+
+```php
+$this->result()->setData((new BuildResponseData())($outcome, $definition->getName()));
+return (new TransformResponse(new SystemClock(), $this->version()))($this->result(), $outcome->status());
+```
+
+| Answer | `data` |
+|--------|--------|
+| success | `@type` (process name, first letter lower case) plus the public fields of the response |
+| 400 | `{@type: 'validation', fields}` |
+| 404 | `{@type: 'notFound', context}` |
+| 409 | `{@type: 'concurrencyConflict', reason, aggregate, context, violated}` |
+| 422 | `{@type: 'ruleViolation', rule, messageKey, context}` |
+| other 4xx | the fields of the response as given (`messageKey`, `context`), no `@type` |
+| 5xx | empty |
+
+An empty `context` encodes as `{}`. The context keys the 400 form does not know are not part of its answer.
+
+**Message key in `data`.** The key a node names with its `reject` is the *declared* key (`ProcessOutcome::declaredMessageKey()`): it joins the `data` of every 4xx as the last member (the 422 form carries it anyway), an empty key names none. The keys of the package's own layers (`process.inputInvalid`, `process.actorMissing`, `process.transientConflict`) are never declared and never reach `data`.
+
+**Field paths.** The input check answers its paths below the input root (`customer`, `items[1].qty`). A node fed by one input property declares it with `input('customer')`; a 400 reject of that node answers its findings as `customer.<field>`.
 
 **Other answer values** (`src/Data/`): `ReadResult` is the one form for a list and a single read, `Reference` is the write-side answer value (root identifier plus child identifiers, never objects).
 

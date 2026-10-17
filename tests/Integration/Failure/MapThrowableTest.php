@@ -170,7 +170,13 @@ class MapThrowableTest extends TransactionTestCase
         $form = $outcome->response();
         $this->assertInstanceOf(Conflict::class, $form);
         $this->assertSame('process.transientConflict', $form->messageKey());
-        $this->assertSame('transient', $form->reason());
+        $this->assertSame('stale_write', $form->reason());
+        $this->assertSame('P', $form->aggregate(), 'the process name, as the pre-move handler answered');
+        $this->assertNull($outcome->declaredMessageKey(), 'a key of the package is never declared');
+        $this->assertEquals(
+            ['@type' => 'concurrencyConflict', 'reason' => 'stale_write', 'aggregate' => 'P', 'context' => new \stdClass(), 'violated' => []],
+            (new \JardisSupport\Workflow\Handler\Response\BuildResponseData())($outcome, 'P')
+        );
         $this->assertSame([], $this->ledger->notes());
         $this->assertSame(['beginTransaction', 'rollback'], $this->connection->calls());
     }
