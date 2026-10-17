@@ -1,6 +1,6 @@
 ---
 name: support-workflow
-description: jardissupport/workflow 2.0 - process engine for one request-response use case. Declare a node graph with ProcessDefinition, run it with ProcessRunner, get a typed ProcessOutcome; NodeResult (ok, route, reject, withEvents), ProcessContext, start validation (400/401), transaction bracket with savepoints, four failure forms. Use when working with ProcessRunner, ProcessDefinition, NodeResult, ProcessContext, failure forms or jardissupport/workflow.
+description: jardissupport/workflow 2.1 - process engine for one request-response use case. Declare a node graph with ProcessDefinition, run it with ProcessRunner, get a typed ProcessOutcome; NodeResult (ok, route, reject, withEvents), ProcessContext, start validation (400/401), transaction bracket with savepoints, four failure forms, envelope data per answer (BuildResponseData, declaredMessageKey, input field paths). Use when working with ProcessRunner, ProcessDefinition, NodeResult, ProcessContext, BuildResponseData, declaredMessageKey, failure forms or jardissupport/workflow.
 user-invocable: false
 zone: post-active
 persona: C
@@ -9,11 +9,11 @@ next: [generated-code-workflow-api]
 ---
 
 # WORKFLOW_COMPONENT_SKILL
-> `jardissupport/workflow` 2.0 | NS: `JardisSupport\Workflow` | PHP 8.3+ | requires `jardissupport/contracts` ^2.12, `jardissupport/scheduling` ^1.2
+> `jardissupport/workflow` 2.1 | NS: `JardisSupport\Workflow` | PHP 8.3+ | requires `jardissupport/contracts` ^2.12, `jardissupport/scheduling` ^1.2
 
 ## Usage essentials
 
-**Trigger:** ProcessRunner, ProcessDefinition, NodeResult, ProcessContext, ProcessOutcome, ReadResult, Reference, ValidationFailure, NotFound, Conflict, RuleViolation, MapResponse, MapThrowable, Bracket, RuleMode, `sp_{depth}`, `process.inputInvalid`.
+**Trigger:** ProcessRunner, ProcessDefinition, NodeResult, ProcessContext, ProcessOutcome, declaredMessageKey, BuildResponseData, ReadResult, Reference, ValidationFailure, NotFound, Conflict, RuleViolation, MapResponse, MapThrowable, Bracket, RuleMode, `sp_{depth}`, `process.inputInvalid`.
 
 ```
 ProcessRunner::run($definition, $input, $actor, $nodeFactory, $parent = null)
@@ -53,15 +53,16 @@ $outcome->events();   // caller publishes these AFTER the run (committed)
 |-------|--------------|
 | `ProcessRunner` | `new ProcessRunner(?DbConnectionInterface, ValidatorInterface)`, `forKernel(DomainKernelInterface, ValidatorInterface)`, `run(definition, input, actor, nodeFactory, parent = null)` |
 | `ResolveConnection` (`Handler/Start/`) | `__invoke(DomainKernelInterface): ?DbConnectionInterface` - pool -> `getWriter()`, `PDO` -> `PdoConnection`, none -> `null` (used by `forKernel`) |
-| `ProcessDefinition` (`Data/ProcessDefinition.php`) | `for(inputClass, name)`, `context`, `transactional(bool)`, `validate`, `actor`, `requires(...)`, `loopLimit(int)` (default 100), `ruleMode(node, RuleMode)`, `node`, `onTrue/onFalse/onSkip/onTimeout/onCancel/onExit(?target)`, `terminal(Route ...)`, `rejects(ResponseStatus, messageKey)`, `response(class, fields...)`, `build()` |
+| `ProcessDefinition` (`Data/ProcessDefinition.php`) | `for(inputClass, name)`, `context`, `transactional(bool)`, `validate`, `actor`, `requires(...)`, `loopLimit(int)` (default 100), `ruleMode(node, RuleMode)`, `node`, `input(property)` (getter `getInput(node)`), `onTrue/onFalse/onSkip/onTimeout/onCancel/onExit(?target)`, `terminal(Route ...)`, `rejects(ResponseStatus, messageKey)`, `response(class, fields...)`, `build()` |
 | `NodeResult` | `ok(array\|object)`, `route(Route, data = null)`, `reject(status, messageKey, context = [], errors = [])`, `withEvents(object ...)`; readers `takenRoute data isRejected status messageKey context errors events` |
 | `ProcessContext` (not final) | `input actor previous latest(node) all(node) iteration(node) chain depth` |
-| `ProcessOutcome` | `status response errors events cause` |
+| `ProcessOutcome` | `status response errors events cause declaredMessageKey` |
 | `ReadResult<T>` | `ofList(items, total)`, `ofOne(?item)`; `items total first isEmpty` |
 | `Reference` | `new Reference(root, children = [])`; `root children` |
 | `Failure\FailureForm` | `ValidationFailure(messageKey, fields[], context)`, `NotFound`, `Conflict(... reason, aggregate, violated)`, `RuleViolation(rule, messageKey, context)` |
 | `MapResponse` | `__invoke(DomainResponseInterface): NodeResult` (2xx ok, 4xx reject, else throws) |
 | `CheckRequires` | `__invoke(DomainKernelInterface, list<string>): void` (called by the generated handler) |
+| `BuildResponseData` (`Handler/Response/`) | `__invoke(ProcessOutcome, string $processName): array` - the `data` of the envelope per answer form |
 | `TransformResponse` | `new TransformResponse(ClockInterface, string $version = '')`; `ContextResponse` -> `DomainResponse` |
 
 ## Full reference
@@ -70,7 +71,27 @@ $outcome->events();   // caller publishes these AFTER the run (committed)
 
 **Start.** `ValidateInput`: only if `validate()` is set, always through the injected validator -> 400 `ValidationFailure` with `fields[]` (`field`, `reason` missing|invalid, `message`), key `process.inputInvalid`. `CheckActor`: `actor()` set and no actor -> 401, key `process.actorMissing`. 403 is a node decision. Nothing of context/nodes/transaction exists for a failed start.
 
-**Failure forms.** 400 `ValidationFailure`, 404 `NotFound`, 409 `Conflict`, 422 `RuleViolation` (built from context keys `fields`, `reason/aggregate/violated`, `rule`); other 4xx `stdClass{messageKey, context}`; 5xx empty `stdClass` + `cause()`. `MapThrowable`: `TransientConflictException` in the owning run -> 409 `process.transientConflict` `{reason: transient}`, in a nested run rethrown; any other Throwable -> 500.
+**Failure forms.** 400 `ValidationFailure`, 404 `NotFound`, 409 `Conflict`, 422 `RuleViolation` (built from context keys `fields`, `reason/aggregate/violated`, `rule`); other 4xx `stdClass{messageKey, context}`; 5xx empty `stdClass` + `cause()`. `MapThrowable`: `TransientConflictException` in the owning run -> 409 `process.transientConflict` `{reason: stale_write, aggregate: <process name>}`, in a nested run rethrown; any other Throwable -> 500.
+
+**Envelope data (`BuildResponseData`).** The one place an answer becomes the envelope's `data`; the generated handler sets it, `TransformResponse` wraps it (since 2.1):
+
+```php
+$this->result()->setData((new BuildResponseData())($outcome, $definition->getName()));
+```
+
+| Answer | `data` |
+|--------|--------|
+| 2xx | `@type` (process name, first letter lower case) + public fields of the response |
+| 400 | `{@type: 'validation', fields}` |
+| 404 | `{@type: 'notFound', context}` |
+| 409 | `{@type: 'concurrencyConflict', reason, aggregate, context, violated}` |
+| 422 | `{@type: 'ruleViolation', rule, messageKey, context}` |
+| other 4xx | response fields as given, no `@type` |
+| 5xx | empty array |
+
+An empty `context` encodes as `{}`. The key a node names in `reject(...)` is `ProcessOutcome::declaredMessageKey()`: it joins `data['messageKey']` of every status >= 400; the package's own keys (`process.inputInvalid`, `process.actorMissing`, `process.transientConflict`) are never declared, so they stay out of `data`.
+
+**Field paths.** `ValidateInput` answers paths below the input root (`customer`, `items[1].qty`). `->input('customer')` on a node: a 400 reject of that node prefixes its `fields[].field` with `customer.`; other statuses unchanged.
 
 **Transaction (`Bracket`).** Opt-out `transactional(false)`: no bracket. Top-level run, none open: begin/commit-or-rollback. Transaction open (parent's or foreign): savepoint `sp_{depth}`, release on success, rollback-to on >= 400 or exception. Sub-process of a run without transaction: no bracket. A savepoint needs `SavepointInterface`, else `ConfigurationException` (500). Transactional process and no connection (`null`, kernel without database) -> `ConfigurationException` (500), key `process.connectionMissing`; opt-out runs without a connection.
 
@@ -103,6 +124,8 @@ $outcome->events();   // caller publishes these AFTER the run (committed)
 | 13 | `withEvents()` replaces earlier events of the same result | `NodeResult.php:74` |
 | 14 | A transactional process (the default) on a runner without connection (`forKernel` on a kernel without database) -> `ConfigurationException` (500, `process.connectionMissing`); opt out with `transactional(false)` | `Transaction/Bracket.php` (`CONNECTION_MISSING_KEY`) |
 | 15 | `requires('dbConnection')` is not needed for the transaction - `forKernel()` resolves the writer itself; it only matters when a node uses the connection | `Start/ResolveConnection.php` |
+| 16 | `declaredMessageKey()` is set only by a node's `reject()`; start, actor and thrown failures carry none, so their `data` has no `messageKey` (the 422 form carries its own) | `Handler/Response/BuildResponseData.php:44-47`, `Handler/Failure/BuildFailureOutcome.php:41` |
+| 17 | `input(property)` prefixes only the `fields` of a 400 reject of its node; a reject without `fields` or with another status stays unchanged | `Handler/Outcome/BuildOutcome.php:66` |
 
 ## Layer rules
 
