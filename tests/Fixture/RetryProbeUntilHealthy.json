@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "id": "process-00000041",
+  "kind": "command",
+  "name": "RetryProbeUntilHealthy",
+  "description": "format-haertung C7 (PRD R8a) — Praezedenz-Erweiterung zu\nBatchRegisterHeartbeats.yml (Kollektor-Quellen P5): dort verlaesst der\nZykel [DecideNextHeartbeat, PersistHeartbeat] ueber `onExit` zu einem\nECHTEN Folgeknoten (brh3, Event-Kasten). Dieser Prozess belegt den\nbislang unbewiesenen zweiten Fall desselben Formatkonstrukts: ein Zykel\nueber >=2 Knoten [EvaluateProbeHealth, WaitBeforeRetry], dessen EINZIGER\nAusweg eine `terminal: true`-Kante OHNE Ziel-Knoten ist (reiner interner\nWatchdog-Loop ohne externes Verkuendungs-Event) — vor format-haertung C7\nmeldete V-13 hier faelschlich eine Endlosschleife (hasExitFromCycle\nzaehlte eine Terminal-Kante nicht als Ausweg, weil ihr `to:` leer ist).\n",
+  "input": {
+    "fields": [
+      {
+        "name": "probeId",
+        "type": "int"
+      }
+    ]
+  },
+  "start": "p1",
+  "nodes": [
+    {
+      "description": "Platzhalter fuer die Probe-Statuspruefung. onSuccess -> Probe noch\nnicht stabil, ein weiterer Wartezyklus folgt. onExit -> Probe ist\nstabil, der Watchdog-Loop endet hier bewusst (Terminal-Deklaration,\nkein Folgeknoten noetig).\n",
+      "id": "p1",
+      "mode": "sync",
+      "name": "EvaluateProbeHealth",
+      "responses": [
+        {
+          "messageKey": "systemHealth.probe_health_watchdog_unmapped",
+          "status": 500,
+          "when": {
+            "from": "p1",
+            "on": "onExit"
+          }
+        }
+      ]
+    },
+    {
+      "description": "Platzhalter fuer die Wartezeit vor dem naechsten Pruef-Durchlauf.\n",
+      "id": "p2",
+      "mode": "sync",
+      "name": "WaitBeforeRetry"
+    }
+  ],
+  "edges": [
+    {
+      "from": "p1",
+      "on": "onSuccess",
+      "to": "p2"
+    },
+    {
+      "from": "p2",
+      "on": "onSuccess",
+      "to": "p1"
+    },
+    {
+      "from": "p1",
+      "on": "onExit",
+      "terminal": true
+    }
+  ]
+}

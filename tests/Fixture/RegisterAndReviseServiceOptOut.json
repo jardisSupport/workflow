@@ -1,0 +1,104 @@
+{
+  "version": 1,
+  "id": "process-regandrev002",
+  "kind": "command",
+  "name": "RegisterAndReviseServiceOptOut",
+  "description": "Transaktionsklammer-Opt-out (crm-nachlauf E3.7, B15): dieselben zwei nativen Aggregat-Aufrufe wie\nRegisterAndReviseService, aber mit ausdruecklichem `runInTransaction: false` — der Prozess laeuft OHNE\nKlammer, jeder Aufruf committet fuer sich (das Gegenstueck zum Default, der bei einer 4xx-Antwort\nzurueckrollt). Nur der Laufzeitbeleg des Opt-outs; keine Fachlichkeit.\nvisibility: internal haelt den Zwilling aus dem OpenAPI-Vertrag und der Routentabelle heraus (kein neuer Endpunkt) —\ner bleibt ueber die Fassade process() des BC erreichbar.\n",
+  "runInTransaction": false,
+  "visibility": "internal",
+  "input": {
+    "fields": [
+      {
+        "accepts": [
+          "ServiceRegistration.ServiceRegistration"
+        ],
+        "name": "registration"
+      },
+      {
+        "accepts": [
+          "ServiceRegistration.UpdateServiceRegistration"
+        ],
+        "name": "revision"
+      }
+    ]
+  },
+  "start": "rar1",
+  "nodes": [
+    {
+      "consumedCalls": [
+        {
+          "dtoType": "ServiceRegistration",
+          "facade": "Ops.Registry.ServiceRegistration",
+          "method": "ServiceRegistration"
+        }
+      ],
+      "description": "Legt die ServiceRegistration ueber die Aggregat-API an. Ein abgelehnter\nWert antwortet 400, ein doppelter Dienstname 409 — beide mit dem\ndeklarierten messageKey.\n",
+      "id": "rar1",
+      "mode": "sync",
+      "name": "RegisterNewService",
+      "responses": [
+        {
+          "messageKey": "registry.register_input_rejected",
+          "status": 400,
+          "when": {
+            "from": "rar1",
+            "on": "onFail"
+          }
+        },
+        {
+          "messageKey": "registry.register_service_clash",
+          "status": 409,
+          "when": {
+            "from": "rar1",
+            "on": "onFail"
+          }
+        }
+      ]
+    },
+    {
+      "consumedCalls": [
+        {
+          "dtoType": "UpdateServiceRegistration",
+          "facade": "Ops.Registry.ServiceRegistration",
+          "method": "UpdateServiceRegistration"
+        }
+      ],
+      "description": "Revidiert eine bestehende ServiceRegistration. Fehlt das Ziel, antwortet\nder Prozess 404 mit dem deklarierten messageKey.\n",
+      "id": "rar2",
+      "mode": "sync",
+      "name": "ReviseExistingService",
+      "responses": [
+        {
+          "messageKey": "registry.revise_target_missing",
+          "status": 404,
+          "when": {
+            "from": "rar2",
+            "on": "onFail"
+          }
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "rar1",
+      "on": "onSuccess",
+      "to": "rar2"
+    },
+    {
+      "from": "rar1",
+      "on": "onFail",
+      "terminal": true
+    },
+    {
+      "from": "rar2",
+      "on": "onSuccess",
+      "terminal": true
+    },
+    {
+      "from": "rar2",
+      "on": "onFail",
+      "terminal": true
+    }
+  ]
+}
