@@ -131,7 +131,7 @@ class BuildFailureFormTest extends TransactionTestCase
         $outcome = $this->runnerOn()->run($definition, new \stdClass(), null, $this->factory([
             self::A => static fn(ProcessContext $c): NodeResult => (new MapResponse())(new FakeDomainResponse(
                 400,
-                ['messageKey' => 'order.invalid', 'fields' => $fields],
+                ['@type' => 'validation', 'messageKey' => 'order.invalid', 'fields' => $fields],
                 ['validator' => ['Too small']]
             )),
         ]));
@@ -139,7 +139,7 @@ class BuildFailureFormTest extends TransactionTestCase
         $form = $outcome->response();
         $this->assertSame(ResponseStatus::ValidationError, $outcome->status());
         $this->assertInstanceOf(ValidationFailure::class, $form);
-        $this->assertSame('order.invalid', $form->messageKey());
+        $this->assertSame('', $form->messageKey(), 'the 400 form has no key of its own; the callee key is not carried');
         $this->assertSame($fields, $form->fields());
         $this->assertSame([], $form->context());
         $this->assertSame(['Too small'], $outcome->errors());
@@ -165,7 +165,7 @@ class BuildFailureFormTest extends TransactionTestCase
         }
     }
 
-    public function testRejectWithoutAFormKeepsKeyAndContextInTheAnswer(): void
+    public function testRejectWithoutAFormAnswersItsContextAsFlatData(): void
     {
         $definition = ProcessDefinition::for('In', 'P')->node(self::A)->terminal()->build();
 
@@ -178,6 +178,7 @@ class BuildFailureFormTest extends TransactionTestCase
         ]));
 
         $this->assertSame(ResponseStatus::Forbidden, $outcome->status());
-        $this->assertEquals((object) ['messageKey' => 'p.forbidden', 'context' => ['role' => 'guest']], $outcome->response());
+        $this->assertEquals((object) ['role' => 'guest'], $outcome->response());
+        $this->assertSame('p.forbidden', $outcome->declaredMessageKey(), 'the key joins the data last, see BuildResponseData');
     }
 }

@@ -12,7 +12,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
- * MapResponse per status class: 2xx succeeds, 4xx rejects with the callee's key, the rest throws (W4).
+ * MapResponse per status class: 2xx succeeds, 4xx rejects with the callee's plain context, the rest throws (W4).
  */
 class MapResponseTest extends TestCase
 {
@@ -35,40 +35,106 @@ class MapResponseTest extends TestCase
     }
 
     /**
-     * @return array<string, array{int, ResponseStatus}>
+     * The callee's data per status in the form its own envelope has, and what the reject carries.
+     *
+     * @return array<string, array{ResponseStatus, array<string, mixed>, string, array<string, mixed>}>
      */
-    public static function rejectStatuses(): array
+    public static function rejectForms(): array
     {
         return [
-            '400' => [400, ResponseStatus::ValidationError],
-            '401' => [401, ResponseStatus::Unauthorized],
-            '403' => [403, ResponseStatus::Forbidden],
-            '404' => [404, ResponseStatus::NotFound],
-            '409' => [409, ResponseStatus::Conflict],
-            '422' => [422, ResponseStatus::RuleViolation],
+            '400 validation: fields only, the key stays unnamed' => [
+                ResponseStatus::ValidationError,
+                ['@type' => 'validation', 'messageKey' => 'order.invalid', 'fields' => [['field' => 'qty']]],
+                '',
+                ['fields' => [['field' => 'qty']]],
+            ],
+            '404 notFound: the inner context is the plain context' => [
+                ResponseStatus::NotFound,
+                ['@type' => 'notFound', 'messageKey' => 'order.gone', 'context' => ['orderRef' => 'A-1']],
+                '',
+                ['orderRef' => 'A-1'],
+            ],
+            '409 conflict: reason, aggregate, violated beside the plain context' => [
+                ResponseStatus::Conflict,
+                [
+                    '@type' => 'concurrencyConflict',
+                    'reason' => 'stale',
+                    'aggregate' => 'order',
+                    'context' => ['orderRef' => 'A-1'],
+                    'violated' => ['uq_order'],
+                ],
+                '',
+                ['reason' => 'stale', 'aggregate' => 'order', 'violated' => ['uq_order'], 'orderRef' => 'A-1'],
+            ],
+            '422 ruleViolation: the rule and the callee key, the plain context' => [
+                ResponseStatus::RuleViolation,
+                [
+                    '@type' => 'ruleViolation',
+                    'rule' => 'OrderMustBeOpen',
+                    'messageKey' => 'order.rule.open',
+                    'context' => ['orderRef' => 'A-1'],
+                ],
+                'order.rule.open',
+                ['rule' => 'OrderMustBeOpen', 'orderRef' => 'A-1'],
+            ],
+            '403 without a form: the data passes through unchanged, its key stays inside' => [
+                ResponseStatus::Forbidden,
+                ['messageKey' => 'auth.denied', 'scope' => 'orders'],
+                '',
+                ['messageKey' => 'auth.denied', 'scope' => 'orders'],
+            ],
+            '401 without a key' => [ResponseStatus::Unauthorized, ['scope' => 'orders'], '', ['scope' => 'orders']],
         ];
     }
 
-    #[DataProvider('rejectStatuses')]
-    public function testClientErrorClassBecomesARejectWithTheCalleesKey(int $status, ResponseStatus $expected): void
-    {
+    /**
+     * @param array<string, mixed> $data
+     * @param array<string, mixed> $context
+     */
+    #[DataProvider('rejectForms')]
+    public function testClientErrorClassBecomesARejectWithThePlainContext(
+        ResponseStatus $expected,
+        array $data,
+        string $key,
+        array $context
+    ): void {
         $result = (new MapResponse())(new FakeDomainResponse(
-            $status,
-            ['messageKey' => 'order.not_found', 'orderRef' => 'A-1'],
-            ['orderRef' => ['unknown', 'closed']]
+            $expected->value,
+            $data,
+            ['orderRef' => ['unknown', 'closed'], 'other' => ['gone']]
         ));
 
         $this->assertTrue($result->isRejected());
         $this->assertSame($expected, $result->status());
-        $this->assertSame('order.not_found', $result->messageKey());
-        $this->assertSame(['orderRef' => 'A-1'], $result->context());
-        $this->assertSame(['unknown', 'closed'], $result->errors());
+        $this->assertSame($key, $result->messageKey());
+        $this->assertSame($context, $result->context());
+        $this->assertSame(['unknown', 'closed', 'gone'], $result->errors());
         $this->assertNull($result->takenRoute());
+    }
+
+    public function testAnEmptyContextOfTheCalleeArrivesAsAnObjectAndStaysEmpty(): void
+    {
+        $result = (new MapResponse())(new FakeDomainResponse(404, ['@type' => 'notFound', 'context' => new \stdClass()]));
+
+        $this->assertSame([], $result->context());
+    }
+
+    public function testTheFormsOwnFieldsWinOverAnInnerContextKeyOfTheSameName(): void
+    {
+        $result = (new MapResponse())(new FakeDomainResponse(409, [
+            'reason' => 'stale',
+            'aggregate' => 'order',
+            'context' => ['reason' => 'inner', 'orderRef' => 'A-1'],
+            'violated' => [],
+        ]));
+
+        $this->assertSame('stale', $result->context()['reason']);
+        $this->assertSame('A-1', $result->context()['orderRef']);
     }
 
     public function testRejectWithoutAKeyFromTheCalleeHasAnEmptyKey(): void
     {
-        $result = (new MapResponse())(new FakeDomainResponse(404));
+        $result = (new MapResponse())(new FakeDomainResponse(403));
 
         $this->assertSame('', $result->messageKey());
     }
