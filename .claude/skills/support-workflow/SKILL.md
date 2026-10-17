@@ -109,3 +109,4 @@ $outcome->events();   // caller publishes these AFTER the run (committed)
 - Application layer builds definitions and starts the runner; the domain core never imports workflow classes
 - Nodes stay thin and delegate to domain services; they neither publish nor dispatch
 - Integration tests over SQLite with the real validator; mock ports only
+- Generated process classes are smoke-tested against the working tree: `tests/Smoke` (builder golden copies + stubs, namespaces mapped in `tests/bootstrap.php`, no consumer `composer.json`, no path repo); `make phpstan-smoke` analyses it, generat findings are listed in `phpstan-smoke.neon`

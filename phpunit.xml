@@ -11,6 +11,9 @@
         <testsuite name="Integration Tests">
             <directory>tests/Integration</directory>
         </testsuite>
+        <testsuite name="Smoke Tests">
+            <directory>tests/Smoke</directory>
+        </testsuite>
     </testsuites>
 
     <php>

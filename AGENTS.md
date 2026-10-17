@@ -11,7 +11,7 @@ Process engine for one request-response use case: a declared node graph (`Proces
 
 ## Commands (always `make`)
 
-`make phpunit` · `make phpunit-coverage` · `make phpstan` · `make phpcs` · `make install` · `make shell`
+`make phpunit` · `make phpunit-coverage` · `make phpstan` · `make phpstan-smoke` · `make phpcs` · `make install` · `make shell`
 
 ## Rules
 
@@ -21,4 +21,5 @@ Process engine for one request-response use case: a declared node graph (`Proces
 - The package publishes and dispatches nothing: events travel on the `NodeResult`, the caller publishes after the commit
 - A reject is not a route; routing is strict (an undeclared route throws `UnroutedStatusException`)
 - Tests are integration tests (SQLite, real validator); mock ports only, no assertion weakening
+- `tests/Smoke` runs copies of the builder goldens (generated process classes) against the working tree; stubs live in `tests/Smoke/Support`, never in `src/`
 - The domain core never imports workflow classes

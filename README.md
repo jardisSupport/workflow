@@ -571,6 +571,15 @@ $response->getMetadata(); // duration, contexts, timestamp, version
 - Nodes stay thin and delegate to domain services. A node does not publish events and does not dispatch.
 - The package publishes nothing and dispatches nothing; the caller owns the events of the outcome.
 
+## Testing against generated code
+
+The generated process classes of the builder run as PHP against the working tree of this package in `tests/Smoke`:
+copies of the builder goldens (`tests/Smoke/Fixture`, builder commit named in each file header) plus stubs of the
+generat's foreign classes (`tests/Smoke/Support`). `tests/bootstrap.php` maps the generat namespaces to those
+directories, so no `composer.json` of a consumer and no path repository is involved - packages come from Packagist only.
+`make phpunit` runs the suite, `make phpstan-smoke` analyses it; a finding that sits in the generat is listed in
+`phpstan-smoke.neon` for the renderer, never worked around in the smoke code.
+
 ## Documentation
 
 Full documentation, guides, and API reference:
