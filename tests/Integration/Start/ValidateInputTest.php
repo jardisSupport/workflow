@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace JardisSupport\Workflow\Tests\Integration\Start;
 
 use JardisSupport\Contract\Kernel\ResponseStatus;
+use JardisSupport\Contract\Validation\ValidationResult;
+use JardisSupport\Contract\Validation\ValidatorInterface;
+use JardisSupport\Workflow\ProcessRunner;
 use JardisSupport\Workflow\Data\Failure\ValidationFailure;
 use JardisSupport\Workflow\Data\NodeResult;
 use JardisSupport\Workflow\Data\ProcessContext;
@@ -112,5 +115,56 @@ class ValidateInputTest extends TransactionTestCase
         );
 
         $this->assertSame(ResponseStatus::Success, $outcome->status(), 'the injected port validates, not the class');
+    }
+
+    public function testEveryFieldCarriesAMessageKeyOfItsReason(): void
+    {
+        $outcome = $this->runnerOn()->run(
+            $this->definition(),
+            new OrderInput(null, [new OrderLine('A-1', 2), new OrderLine('B-7', 0)]),
+            null,
+            $this->factory([self::NODE => $this->writes('node')])
+        );
+
+        $form = $outcome->response();
+        $this->assertInstanceOf(ValidationFailure::class, $form);
+        $fields = array_column($form->fields(), null, 'field');
+        $this->assertSame('validation.missing', $fields['customer']['messageKey']);
+        $this->assertSame('validation.invalid', $fields['items[1].qty']['messageKey']);
+        $this->assertNotSame('', $fields['customer']['message'], 'a validator text stays what it is');
+    }
+
+    public function testAnEmptyValidatorTextBecomesTheStandardTextAndStaysOutOfErrors(): void
+    {
+        $silent = new class implements ValidatorInterface {
+            public function validate(object $data): ValidationResult
+            {
+                return new ValidationResult(
+                    ['customer' => [''], 'note' => ['']],
+                    ['customer' => ['missing'], 'note' => ['invalid']]
+                );
+            }
+        };
+
+        $outcome = (new ProcessRunner($this->connection, $silent))->run(
+            $this->definition(),
+            new OrderInput(null, []),
+            null,
+            $this->factory([self::NODE => $this->writes('node')])
+        );
+
+        $this->assertSame(ResponseStatus::ValidationError, $outcome->status());
+        $form = $outcome->response();
+        $this->assertInstanceOf(ValidationFailure::class, $form);
+        $this->assertSame(
+            [
+                ['field' => 'customer', 'reason' => 'missing', 'message' => 'Field is required.', 'messageKey' => 'validation.missing'],
+                ['field' => 'note', 'reason' => 'invalid', 'message' => 'Field is invalid.', 'messageKey' => 'validation.invalid'],
+            ],
+            $form->fields()
+        );
+        $this->assertSame([], $outcome->errors(), 'errors keep the texts the validator delivered');
+        $data = (new \JardisSupport\Workflow\Handler\Response\BuildResponseData())($outcome, 'PlaceOrder');
+        $this->assertSame('validation.missing', $data['fields'][0]['messageKey']);
     }
 }

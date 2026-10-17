@@ -1,6 +1,6 @@
 ---
 name: support-workflow
-description: jardissupport/workflow 2.1 - process engine for one request-response use case. Declare a node graph with ProcessDefinition, run it with ProcessRunner, get a typed ProcessOutcome; NodeResult (ok, route, reject, withEvents), ProcessContext, start validation (400/401), transaction bracket with savepoints, four failure forms, envelope data per answer (BuildResponseData, declaredMessageKey, input field paths). Use when working with ProcessRunner, ProcessDefinition, NodeResult, ProcessContext, BuildResponseData, declaredMessageKey, failure forms or jardissupport/workflow.
+description: jardissupport/workflow 2.2 - process engine for one request-response use case. Declare a node graph with ProcessDefinition, run it with ProcessRunner, get a typed ProcessOutcome; NodeResult (ok, route, reject, withEvents), ProcessContext, start validation (400/401, field `messageKey`), transaction bracket with savepoints, four failure forms, 5xx cause logged, envelope data per answer (BuildResponseData, declaredMessageKey, input field paths). Use when working with ProcessRunner, ProcessDefinition, NodeResult, ProcessContext, BuildResponseData, declaredMessageKey, failure forms or jardissupport/workflow.
 user-invocable: false
 zone: post-active
 persona: C
@@ -9,7 +9,7 @@ next: [generated-code-workflow-api]
 ---
 
 # WORKFLOW_COMPONENT_SKILL
-> `jardissupport/workflow` 2.1 | NS: `JardisSupport\Workflow` | PHP 8.3+ | requires `jardissupport/contracts` ^2.12, `jardissupport/repository` ^1.6, `jardissupport/scheduling` ^1.2
+> `jardissupport/workflow` 2.2 | NS: `JardisSupport\Workflow` | PHP 8.3+ | requires `jardissupport/contracts` ^2.12, `jardissupport/repository` ^1.6, `jardissupport/scheduling` ^1.2, `psr/log` ^3.0
 
 ## Usage essentials
 
@@ -39,8 +39,8 @@ $definition = ProcessDefinition::for(PlaceOrder::class, 'PlaceOrder')   // input
     ->node(ConfirmOrder::class)->terminal()->response(Confirmed::class)
     ->build();
 
-$runner = new ProcessRunner($dbConnection, $validator);          // ?DbConnectionInterface, ValidatorInterface
-$runner = ProcessRunner::forKernel($kernel, $validator);         // writer from $kernel->dbConnection() (pool | PDO | null)
+$runner = new ProcessRunner($dbConnection, $validator, $logger);  // ?DbConnectionInterface, ValidatorInterface, ?LoggerInterface (PSR-3, optional)
+$runner = ProcessRunner::forKernel($kernel, $validator);         // writer from $kernel->dbConnection() (pool | PDO | null), logger from $kernel->logger()
 $outcome = $runner->run($definition, new PlaceOrder('ACME', 2), new Buyer('b-1'), $nodeFactory);
 $outcome->status();   // ResponseStatus::Success
 $outcome->response(); // Confirmed
@@ -51,7 +51,7 @@ $outcome->events();   // caller publishes these AFTER the run (committed)
 
 | Class | Entry points |
 |-------|--------------|
-| `ProcessRunner` | `new ProcessRunner(?DbConnectionInterface, ValidatorInterface)`, `forKernel(DomainKernelInterface, ValidatorInterface)`, `run(definition, input, actor, nodeFactory, parent = null)` |
+| `ProcessRunner` | `new ProcessRunner(?DbConnectionInterface, ValidatorInterface, ?LoggerInterface = null)`, `forKernel(DomainKernelInterface, ValidatorInterface)`, `run(definition, input, actor, nodeFactory, parent = null)` |
 | `ResolveConnection` (`Handler/Start/`) | `__invoke(DomainKernelInterface): ?DbConnectionInterface` - pool -> `getWriter()`, `PDO` -> `PdoConnection`, none -> `null` (used by `forKernel`) |
 | `ProcessDefinition` (`Data/ProcessDefinition.php`) | `for(inputClass, name)`, `context`, `transactional(bool)`, `validate`, `actor`, `requires(...)`, `loopLimit(int)` (default 100), `ruleMode(node, RuleMode)`, `node`, `input(property)` (getter `getInput(node)`), `onTrue/onFalse/onSkip/onTimeout/onCancel/onExit(?target)`, `terminal(Route ...)`, `rejects(ResponseStatus, messageKey)`, `response(class, fields...)`, `build()` |
 | `NodeResult` | `ok(array\|object)`, `route(Route, data = null)`, `reject(status, messageKey, context = [], errors = [])`, `withEvents(object ...)`; readers `takenRoute data isRejected status messageKey context errors events` |
@@ -69,9 +69,9 @@ $outcome->events();   // caller publishes these AFTER the run (committed)
 
 **Context inheritance (W4).** `ProcessContext` is not `final`: generated processes extend it with typed getters over `latest()`/`all()`; named by `context()`, otherwise the run ends 500 (`CreateContext.php:24`). The chain is immutable (`withStep` is engine-internal). Everything else in the package is `final`.
 
-**Start.** `ValidateInput`: only if `validate()` is set, always through the injected validator -> 400 `ValidationFailure` with `fields[]` (`field`, `reason` missing|invalid, `message`), key `process.inputInvalid`. `CheckActor`: `actor()` set and no actor -> 401, key `process.actorMissing`. 403 is a node decision. Nothing of context/nodes/transaction exists for a failed start.
+**Start.** `ValidateInput`: only if `validate()` is set, always through the injected validator -> 400 `ValidationFailure` with `fields[]` (`field`, `reason` missing|invalid, `message`, `messageKey` `validation.missing`|`validation.invalid`; an empty validator text becomes `Field is required.`/`Field is invalid.` - `Handler/Failure/DescribeFieldFinding`), key `process.inputInvalid`. `CheckActor`: `actor()` set and no actor -> 401, key `process.actorMissing`. 403 is a node decision. Nothing of context/nodes/transaction exists for a failed start.
 
-**Failure forms.** 400 `ValidationFailure`, 404 `NotFound`, 409 `Conflict`, 422 `RuleViolation` (built from context keys `fields`, `reason/aggregate/violated`, `rule`); other 4xx `stdClass{messageKey, context}`; 5xx empty `stdClass` + `cause()`. `MapThrowable`: `TransientConflictException` in the owning run -> 409 `process.transientConflict` `{reason: stale_write, aggregate: <process name>}`, in a nested run rethrown; any other Throwable -> 500.
+**Failure forms.** 400 `ValidationFailure`, 404 `NotFound`, 409 `Conflict`, 422 `RuleViolation` (built from context keys `fields`, `reason/aggregate/violated`, `rule`); other 4xx `stdClass{messageKey, context}`; 5xx empty `stdClass` + `cause()`; the outermost layer `LogCause` writes that cause once to the runner's logger (`error(message, ['exception', 'process'])`, owning run only, 5xx only, no logger = nothing, a failing logger never changes the answer). `MapThrowable`: `TransientConflictException` in the owning run -> 409 `process.transientConflict` `{reason: stale_write, aggregate: <process name>}`, in a nested run rethrown; any other Throwable -> 500.
 
 **Envelope data (`BuildResponseData`).** The one place an answer becomes the envelope's `data`; the generated handler sets it, `TransformResponse` wraps it (since 2.1):
 
