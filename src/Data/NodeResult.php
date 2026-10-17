@@ -11,7 +11,7 @@ use JardisSupport\Workflow\Exception\ConstructionException;
  * Immutable result of one node step: either a route (with data) or a reject (4xx, ends the run).
  *
  * A rejected result carries no route; the engine ends the loop on it. Events travel
- * with the result and are collected by the runner - this class never dispatches.
+ * with the result and are collected by the runner - this class never sends them on.
  */
 final readonly class NodeResult
 {

@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "id": "process-00000020",
+  "kind": "command",
+  "name": "BatchOrderFulfilment",
+  "description": "Caller-Fixture fuer R10: ruft OrderInvoiceBatch als Sub-Prozess auf.\nBelegt R4 (Einzel-Command-Feld primaryCommand: UpdateOrder|UpdateInvoice),\nR5 (Listen-Command-Feld lineCommands: array<AddOrderItem|AddInvoiceLine>)\nund R1 (Skalare requestedBy: string, note: string).\n",
+  "input": {
+    "fields": [
+      {
+        "name": "invoiceRef",
+        "type": "string"
+      }
+    ]
+  },
+  "start": "f0a1b201",
+  "nodes": [
+    {
+      "description": "Platzhalter fuer den Input-Sub-Flow.\nBereitet den Command-DTO-Strom auf.\n",
+      "id": "f0a1b201",
+      "mode": "sync",
+      "name": "BatchOrderFulfilmentEntry"
+    },
+    {
+      "id": "f1b2c302",
+      "mode": "sync",
+      "name": "RunBatch",
+      "subProcess": "OrderInvoiceBatch"
+    },
+    {
+      "description": "Platzhalter fuer den Output-Sub-Flow.\nReduziert die Ergebnisse zur Domain-Response.\n",
+      "id": "f2c3d403",
+      "mode": "sync",
+      "name": "BatchOrderFulfilmentFinalize",
+      "responses": [
+        {
+          "messageKey": "sales.batch_order_fulfilment_failed",
+          "status": 500,
+          "when": {
+            "from": "f1b2c302",
+            "on": "onFail"
+          }
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "f0a1b201",
+      "on": "onSuccess",
+      "to": "f1b2c302"
+    },
+    {
+      "from": "f1b2c302",
+      "on": "onSuccess",
+      "to": "f2c3d403"
+    },
+    {
+      "from": "f1b2c302",
+      "on": "onFail",
+      "to": "f2c3d403"
+    }
+  ]
+}
