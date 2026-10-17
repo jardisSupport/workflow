@@ -345,6 +345,112 @@ class BuildResponseDataTest extends RunnerTestCase
         $this->assertSame(['fields' => 'kept', 'id' => 1], (new BuildResponseData())($outcome, 'CheckoutOrder')['context']);
     }
 
+    public function testTopLevelDateGoesOutAsAtomString(): void
+    {
+        $expires = new \DateTimeImmutable('2026-10-17T12:30:45+02:00');
+        $outcome = new ProcessOutcome(ResponseStatus::Success, (object) ['accessToken' => 't', 'expiresAt' => $expires]);
+
+        $data = (new BuildResponseData())($outcome, 'Login');
+
+        $this->assertSame('2026-10-17T12:30:45+02:00', $data['expiresAt']);
+        $this->assertSame(['@type' => 'login', 'accessToken' => 't', 'expiresAt' => '2026-10-17T12:30:45+02:00'], $data);
+        $this->assertStringContainsString('"expiresAt":"2026-10-17T12:30:45+02:00"', (string) json_encode($data));
+        $this->assertNotFalse(\DateTimeImmutable::createFromFormat(\DATE_ATOM, $data['expiresAt']));
+    }
+
+    public function testMutableDateTimeAndUtcAreProjectedToo(): void
+    {
+        $outcome = new ProcessOutcome(ResponseStatus::Success, (object) [
+            'at' => new \DateTime('2026-01-02 03:04:05', new \DateTimeZone('UTC')),
+        ]);
+
+        $this->assertSame('2026-01-02T03:04:05+00:00', (new BuildResponseData())($outcome, 'P')['at']);
+    }
+
+    public function testNestedDatesInArraysListsAndObjectsAreProjected(): void
+    {
+        $day = new \DateTimeImmutable('2026-03-04T05:06:07+00:00');
+        $inner = new stdClass();
+        $inner->since = $day;
+        $inner->label = 'x';
+        $outcome = new ProcessOutcome(ResponseStatus::Success, (object) [
+            'session' => ['issuedAt' => $day, 'history' => [$day, ['again' => $day]]],
+            'owner' => $inner,
+        ]);
+
+        $data = (new BuildResponseData())($outcome, 'P');
+
+        $this->assertSame(
+            ['issuedAt' => '2026-03-04T05:06:07+00:00', 'history' => ['2026-03-04T05:06:07+00:00', ['again' => '2026-03-04T05:06:07+00:00']]],
+            $data['session']
+        );
+        $this->assertEquals((object) ['since' => '2026-03-04T05:06:07+00:00', 'label' => 'x'], $data['owner']);
+        $this->assertStringNotContainsString('timezone_type', (string) json_encode($data));
+        $this->assertSame($day, $inner->since, 'the response object itself is not touched');
+    }
+
+    public function testNullDateAndNonDateValuesPassThroughUnchanged(): void
+    {
+        $plain = new stdClass();
+        $plain->a = 1;
+        $enum = ResponseStatus::Success;
+        $outcome = new ProcessOutcome(ResponseStatus::Success, (object) [
+            'expiresAt' => null,
+            'count' => 3,
+            'tags' => ['a', 'b'],
+            'plain' => $plain,
+            'status' => $enum,
+        ]);
+
+        $data = (new BuildResponseData())($outcome, 'P');
+
+        $this->assertNull($data['expiresAt']);
+        $this->assertSame(3, $data['count']);
+        $this->assertSame(['a', 'b'], $data['tags']);
+        $this->assertSame($plain, $data['plain'], 'an object without a date comes back as the same instance');
+        $this->assertSame($enum, $data['status'], 'an enum keeps its own wire form');
+    }
+
+    public function testJsonSerializableKeepsItsOwnWireForm(): void
+    {
+        $value = new class implements \JsonSerializable {
+            public \DateTimeImmutable $hidden;
+
+            public function __construct()
+            {
+                $this->hidden = new \DateTimeImmutable('2026-01-01T00:00:00+00:00');
+            }
+
+            public function jsonSerialize(): string
+            {
+                return 'own';
+            }
+        };
+        $outcome = new ProcessOutcome(ResponseStatus::Success, (object) ['v' => $value]);
+
+        $data = (new BuildResponseData())($outcome, 'P');
+
+        $this->assertSame($value, $data['v']);
+        $this->assertStringContainsString('"v":"own"', (string) json_encode($data));
+    }
+
+    public function testDateInARejectContextGoesOutAsAtomString(): void
+    {
+        $until = new \DateTimeImmutable('2026-10-17T12:00:00+00:00');
+        $definition = ProcessDefinition::for('In', 'CheckoutOrder')->node(self::NODE)->terminal()->build();
+
+        $outcome = $this->outcomeOf($definition, static fn(ProcessContext $c): NodeResult => NodeResult::reject(
+            ResponseStatus::RuleViolation,
+            'order.locked',
+            ['lockedUntil' => $until]
+        ));
+
+        $this->assertSame(
+            '2026-10-17T12:00:00+00:00',
+            (new BuildResponseData())($outcome, 'CheckoutOrder')['context']['lockedUntil']
+        );
+    }
+
     /**
      * @param callable(ProcessContext): NodeResult $node
      */

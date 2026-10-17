@@ -18,10 +18,11 @@ use JardisSupport\Workflow\Exception\ConfigurationException;
  * surrounding run, or one somebody else holds - the run works in a savepoint `sp_{depth}` and never
  * starts a transaction; a sub-process of a run without a transaction has no bracket either. A
  * success commits (releases the savepoint), an answer of 400 and above or an exception rolls back
- * (to the savepoint) - an exception is thrown on. A savepoint needs a connection that supports
- * them, else it is a configuration error. A transactional process without any connection (the
- * kernel has no database) is a configuration error too, key {@see self::CONNECTION_MISSING_KEY};
- * an opted-out process needs none.
+ * (to the savepoint) - an exception is thrown on, and it stays the cause even when the transaction is
+ * already gone or the rollback itself fails; a rollback is only issued while a transaction is open.
+ * A savepoint needs a connection that supports them, else it is a configuration error. A
+ * transactional process without any connection (the kernel has no database) is a configuration
+ * error too, key {@see self::CONNECTION_MISSING_KEY}; an opted-out process needs none.
  */
 final class Bracket
 {
@@ -68,6 +69,7 @@ final class Bracket
         return $this->settle(
             $request,
             $next,
+            $connection,
             static fn() => $connection->commit(),
             static fn() => $connection->rollback()
         );
@@ -94,6 +96,7 @@ final class Bracket
         return $this->settle(
             $request,
             $next,
+            $connection,
             static fn() => $connection->releaseSavepoint($name),
             static fn() => $connection->rollbackToSavepoint($name)
         );
@@ -104,18 +107,34 @@ final class Bracket
      * @param \Closure(): void $commit
      * @param \Closure(): void $rollback
      */
-    private function settle(RunRequest $request, \Closure $next, \Closure $commit, \Closure $rollback): ProcessOutcome
-    {
+    private function settle(
+        RunRequest $request,
+        \Closure $next,
+        DbConnectionInterface $connection,
+        \Closure $commit,
+        \Closure $rollback
+    ): ProcessOutcome {
         try {
             $outcome = $next($request);
         } catch (\Throwable $failure) {
-            $rollback();
+            // The original failure stays the cause: a transaction a node already ended (an implicit
+            // commit, a manual commit) has nothing to roll back, and a failing rollback must not
+            // replace the error that led here.
+            try {
+                if ($connection->inTransaction()) {
+                    $rollback();
+                }
+            } catch (\Throwable) {
+                // dropped on purpose - the original failure is thrown on
+            }
 
             throw $failure;
         }
 
         if ($outcome->status()->value >= 400) {
-            $rollback();
+            if ($connection->inTransaction()) {
+                $rollback();
+            }
         } else {
             $commit();
         }

@@ -22,6 +22,8 @@ use stdClass;
  *   422 `ruleViolation`: `@type`, `rule`, `messageKey`, `context`;
  * - the message key a node declared with its reject joins the data of every 4xx, the keys of the
  *   package's own layers do not; the 422 form always carries its own; an empty `context` encodes as `{}`;
+ * - date values (any {@see \DateTimeInterface}, at any depth) go out as RFC 3339 / ATOM strings
+ *   ({@see ProjectWireValue});
  * - another 4xx of a node (declared) passes its response fields through unchanged; one of the package's
  *   own layers (not declared, e.g. the missing actor) and a 5xx answer no data.
  *
@@ -47,7 +49,10 @@ final class BuildResponseData
             $data['messageKey'] = $declared;
         }
 
-        return $data;
+        /** @var array<string, mixed> $wire */
+        $wire = (new ProjectWireValue())($data);
+
+        return $wire;
     }
 
     /**
