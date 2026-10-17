@@ -9,13 +9,16 @@ use JardisSupport\Contract\Validation\ValidatorInterface;
 use JardisSupport\Workflow\Data\ProcessOutcome;
 use JardisSupport\Workflow\Data\RunRequest;
 use JardisSupport\Workflow\Handler\Failure\BuildFailureOutcome;
+use JardisSupport\Workflow\Handler\Failure\DescribeFieldFinding;
 
 /**
  * Run layer: checks the input before any node, transaction or context exists.
  *
  * Only a definition that declares a validator is checked, and always by the injected validator
  * port - the declared class is never instantiated here. A finding ends the run with a 400 whose
- * `fields` list names every failing field; the next layer and so every node stay untouched.
+ * `fields` list names every failing field (`field`, `reason`, `message`, `messageKey`, see
+ * {@see DescribeFieldFinding}); the next layer and so every node stay untouched. The `errors` list
+ * carries the texts the validator delivered.
  */
 final class ValidateInput
 {
@@ -24,6 +27,7 @@ final class ValidateInput
     public function __construct(
         private readonly ValidatorInterface $validator,
         private readonly BuildFailureOutcome $buildFailureOutcome = new BuildFailureOutcome(),
+        private readonly DescribeFieldFinding $describeFieldFinding = new DescribeFieldFinding(),
     ) {
     }
 
@@ -41,8 +45,12 @@ final class ValidateInput
             return $next($request);
         }
 
-        $fields = $result->toFields(lcfirst((new \ReflectionClass($request->input))->getShortName()));
-        $messages = array_filter(array_column($fields, 'message'), static fn(string $message): bool => $message !== '');
+        $findings = $result->toFields(lcfirst((new \ReflectionClass($request->input))->getShortName()));
+        $messages = array_filter(
+            array_column($findings, 'message'),
+            static fn(string $message): bool => $message !== ''
+        );
+        $fields = array_map($this->describeFieldFinding, $findings);
 
         return ($this->buildFailureOutcome)(
             ResponseStatus::ValidationError,

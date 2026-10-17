@@ -17,6 +17,7 @@ use JardisSupport\Workflow\Handler\Context\HydrateResponse;
 use JardisSupport\Workflow\Handler\Events\CollectEvents;
 use JardisSupport\Workflow\Handler\Failure\BuildFailureForm;
 use JardisSupport\Workflow\Handler\Failure\BuildFailureOutcome;
+use JardisSupport\Workflow\Handler\Failure\LogCause;
 use JardisSupport\Workflow\Handler\Failure\MapThrowable;
 use JardisSupport\Workflow\Handler\Loop\GuardLoop;
 use JardisSupport\Workflow\Handler\Node\ApplyRuleMode;
@@ -29,6 +30,7 @@ use JardisSupport\Workflow\Handler\Start\CheckActor;
 use JardisSupport\Workflow\Handler\Start\ResolveConnection;
 use JardisSupport\Workflow\Handler\Start\ValidateInput;
 use JardisSupport\Workflow\Handler\Transaction\Bracket;
+use Psr\Log\LoggerInterface;
 
 /**
  * Runs a process definition and answers with a {@see ProcessOutcome}.
@@ -36,19 +38,23 @@ use JardisSupport\Workflow\Handler\Transaction\Bracket;
  * Pure composition, no logic of its own. Each node is wrapped, outside in, by GuardLoop,
  * CollectEvents, HydrateResponse, PassThrough and ApplyRuleMode; the engine walks the graph over
  * that chain and BuildOutcome turns the finished run into the answer. The run itself sits in
- * layers, outside in: MapThrowable, ValidateInput, CheckActor, Bracket, then the core.
+ * layers, outside in: LogCause, MapThrowable, ValidateInput, CheckActor, Bracket, then the core.
  *
  * The connection is optional: a process that opted out of the transaction runs without one, a
  * transactional process without one ends with 500 (see {@see Bracket}). {@see self::forKernel()}
- * takes the writer from the kernel.
+ * takes the writer and the logger from the kernel. A given logger receives the cause of every
+ * failed run once (see {@see LogCause}); without one nothing is logged.
  */
 final class ProcessRunner
 {
     /** @var \Closure(RunRequest): ProcessOutcome */
     private \Closure $execution;
 
-    public function __construct(?DbConnectionInterface $connection, ValidatorInterface $validator)
-    {
+    public function __construct(
+        ?DbConnectionInterface $connection,
+        ValidatorInterface $validator,
+        ?LoggerInterface $logger = null
+    ) {
         $buildFailureForm = new BuildFailureForm();
         $buildFailureOutcome = new BuildFailureOutcome($buildFailureForm);
         $chain = array_reduce(
@@ -83,6 +89,7 @@ final class ProcessRunner
 
         $this->execution = array_reduce(
             array_reverse([
+                new LogCause($logger),
                 new MapThrowable($buildFailureOutcome),
                 new ValidateInput($validator, $buildFailureOutcome),
                 new CheckActor($buildFailureOutcome),
@@ -97,11 +104,12 @@ final class ProcessRunner
 
     /**
      * The runner of a kernel: the writer connection comes from the kernel's `dbConnection()`
-     * (a pool, a raw driver handle or none), see {@see ResolveConnection}.
+     * (a pool, a raw driver handle or none), see {@see ResolveConnection}; the logger comes from the
+     * kernel's `logger()` (may be none).
      */
     public static function forKernel(DomainKernelInterface $kernel, ValidatorInterface $validator): self
     {
-        return new self((new ResolveConnection())($kernel), $validator);
+        return new self((new ResolveConnection())($kernel), $validator, $kernel->logger());
     }
 
     /**
