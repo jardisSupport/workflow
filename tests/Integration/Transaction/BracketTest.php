@@ -122,6 +122,64 @@ class BracketTest extends TransactionTestCase
         $this->assertFalse($this->connection->inTransaction());
     }
 
+    public function testThrowAfterTheTransactionWasEndedKeepsTheOriginalFailureAsCause(): void
+    {
+        $outcome = $this->runnerOn()->run(
+            $this->chainOfThree(),
+            new \stdClass(),
+            null,
+            $this->factory([
+                self::A => function (ProcessContext $c): NodeResult {
+                    $this->ledger->add('a');
+                    $this->connection->pdo()->commit();
+
+                    throw new \DomainException('original');
+                },
+            ])
+        );
+
+        $this->assertSame(ResponseStatus::InternalError, $outcome->status());
+        $this->assertInstanceOf(\DomainException::class, $outcome->cause());
+        $this->assertSame('original', $outcome->cause()->getMessage());
+        $this->assertSame(['beginTransaction'], $this->connection->calls(), 'no rollback without an open transaction');
+    }
+
+    public function testBracketThrowsTheOriginalWhenNoTransactionIsOpenAnymore(): void
+    {
+        $bracket = new Bracket($this->connection);
+        $request = RunRequest::of($this->chainOfThree(), new \stdClass(), null, $this->factory([]));
+
+        try {
+            $bracket($request, function (RunRequest $r): ProcessOutcome {
+                $this->connection->pdo()->commit();
+
+                throw new \DomainException('boom');
+            });
+            $this->fail('the exception must be thrown on');
+        } catch (\DomainException $e) {
+            $this->assertSame('boom', $e->getMessage());
+        }
+    }
+
+    public function testRejectAfterTheTransactionWasEndedAnswersTheRejectWithoutRollback(): void
+    {
+        $outcome = $this->runnerOn()->run(
+            $this->chainOfThree(),
+            new \stdClass(),
+            null,
+            $this->factory([
+                self::A => function (ProcessContext $c): NodeResult {
+                    $this->connection->pdo()->commit();
+
+                    return NodeResult::reject(ResponseStatus::NotFound, 'p.gone');
+                },
+            ])
+        );
+
+        $this->assertSame(ResponseStatus::NotFound, $outcome->status());
+        $this->assertSame(['beginTransaction'], $this->connection->calls());
+    }
+
     public function testOptOutRunsWithoutAnyTransactionAndRejectKeepsEarlierRows(): void
     {
         $definition = ProcessDefinition::for('In', 'P')
