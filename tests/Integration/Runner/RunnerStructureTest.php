@@ -105,7 +105,9 @@ class RunnerStructureTest extends TestCase
     {
         $parameters = (new ReflectionClass(ProcessRunner::class))->getConstructor()?->getParameters() ?? [];
 
-        $this->assertCount(2, $parameters);
+        // connection, validator and the optional logger (2.2)
+        $this->assertCount(3, $parameters);
+        $this->assertTrue($parameters[2]->isOptional(), 'the logger is additive');
         foreach ($parameters as $parameter) {
             $type = $parameter->getType();
             $this->assertInstanceOf(ReflectionNamedType::class, $type);

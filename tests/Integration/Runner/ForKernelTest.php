@@ -14,6 +14,7 @@ use JardisSupport\Workflow\Exception\ConfigurationException;
 use JardisSupport\Workflow\ProcessRunner;
 use JardisSupport\Repository\Adapter\PdoConnectionPool;
 use JardisSupport\Workflow\Tests\Support\Db\Ledger;
+use JardisSupport\Workflow\Tests\Support\Log\RecordingLogger;
 use JardisSupport\Workflow\Tests\Support\Process\Order\OrderValidation;
 use PHPUnit\Framework\TestCase;
 
@@ -25,10 +26,11 @@ class ForKernelTest extends TestCase
 {
     private const A = 'Node\\A';
 
-    private function kernel(ConnectionPoolInterface|\PDO|null $connection): DomainKernelInterface
+    private function kernel(ConnectionPoolInterface|\PDO|null $connection, ?RecordingLogger $logger = null): DomainKernelInterface
     {
         $kernel = $this->createStub(DomainKernelInterface::class);
         $kernel->method('dbConnection')->willReturn($connection);
+        $kernel->method('logger')->willReturn($logger);
 
         return $kernel;
     }
@@ -88,5 +90,27 @@ class ForKernelTest extends TestCase
         $outcome = $runner->run($this->definition(false), new \stdClass(), null, $this->writer($ledger));
         $this->assertSame(ResponseStatus::Success, $outcome->status());
         $this->assertSame(['row'], $ledger->notes());
+    }
+
+    public function testKernelLoggerReceivesTheCauseOfAFailedRun(): void
+    {
+        $logger = new RecordingLogger();
+        $runner = ProcessRunner::forKernel($this->kernel(null, $logger), OrderValidation::validator());
+
+        $outcome = $runner->run($this->definition(), new \stdClass(), null, $this->writer(new Ledger(Ledger::pdo())));
+
+        $this->assertSame(ResponseStatus::InternalError, $outcome->status());
+        $this->assertCount(1, $logger->records);
+        $this->assertSame($outcome->cause(), $logger->records[0]['context']['exception']);
+        $this->assertSame('P', $logger->records[0]['context']['process']);
+    }
+
+    public function testKernelWithoutALoggerLogsNothingAndFailsAsBefore(): void
+    {
+        $runner = ProcessRunner::forKernel($this->kernel(null), OrderValidation::validator());
+
+        $outcome = $runner->run($this->definition(), new \stdClass(), null, $this->writer(new Ledger(Ledger::pdo())));
+
+        $this->assertSame(ResponseStatus::InternalError, $outcome->status());
     }
 }
