@@ -17,7 +17,7 @@ use JardisSupport\Workflow\Tests\Support\Process\Checkout\Response\ReserveStockR
 use JardisSupport\Workflow\Tests\Support\RunnerTestCase;
 
 /**
- * The node chain GuardLoop, CollectEvents, HydrateResponse, PassThrough around real nodes,
+ * The node chain GuardLoop, CollectEvents, HydrateResponse around real nodes,
  * driven through the runner (W1 + B1).
  */
 class RunnerChainTest extends RunnerTestCase

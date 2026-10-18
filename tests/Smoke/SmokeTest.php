@@ -10,6 +10,9 @@ use Ecommerce\Sales\Process\OrderBulkQuote\Command\OrderBulkQuote;
 use Ecommerce\Sales\Process\OrderBulkQuote\Command\OrderBulkQuoteLinesDiscountItem;
 use Ecommerce\Sales\Process\OrderBulkQuote\Command\OrderBulkQuoteLinesItem;
 use Ecommerce\Sales\Process\OrderBulkQuote\Command\OrderBulkQuoteShippingAddressItem;
+use Ecommerce\Sales\Process\VoucherRedeemCheck\Command\Handler\VoucherRedeemCheckActor;
+use Ecommerce\Sales\Process\VoucherRedeemCheck\Command\Handler\VoucherRedeemCheckHandler;
+use Ecommerce\Sales\Process\VoucherRedeemCheck\Command\VoucherRedeemCheck;
 use JardisSupport\Contract\Kernel\DomainResponseInterface;
 use JardisSupport\Contract\Kernel\EventScope;
 use JardisSupport\Contract\Kernel\ResponseStatus;
@@ -17,17 +20,17 @@ use JardisSupport\Workflow\Tests\Smoke\Support\FakeKernel;
 use JardisSupport\Workflow\Tests\Support\FakeDomainResponse;
 use Ops\Registry\Model\ServiceRegistration\Command\ServiceRegistration;
 use Ops\Registry\Model\ServiceRegistration\Command\UpdateServiceRegistration;
+use Ops\Registry\Model\ServiceRegistration\ServiceRegistration as RegistrationFacade;
 use Ops\Registry\Process\RegisterAndReviseServiceOptOut\Command\Handler\RegisterAndReviseServiceOptOutDefinition;
 use Ops\Registry\Process\RegisterAndReviseServiceOptOut\Command\Handler\RegisterAndReviseServiceOptOutHandler;
 use Ops\Registry\Process\RegisterAndReviseServiceOptOut\Command\RegisterAndReviseServiceOptOut;
-use Ops\Registry\Process\RegisterAndReviseServiceOptOut\Event\ServiceRevised;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Smoke of the E3-P3 goldens: the generated process classes (copies under `Fixture/`, builder commit
- * 61b275eec) run as PHP against the working tree of the package - the real runner, the real validator,
+ * Smoke of the generat: the generated process classes (copies under `Fixture/`, builder commit
+ * df33f2953) run as PHP against the working tree of the package - the real runner, the real validator,
  * a fake kernel with a SQLite PDO. The node bodies are filled in the Fixture copy (the generat's stub
- * bodies throw); everything else of the generat is untouched.
+ * body throws); everything else of the generat is untouched.
  */
 class SmokeTest extends TestCase
 {
@@ -67,7 +70,7 @@ class SmokeTest extends TestCase
 
         $this->assertSame(200, $response->getStatus());
         $this->assertSame(
-            ['lineCount' => 2, 'discountedLines' => 1, 'city' => 'Berlin', 'voucherCount' => 3],
+            ['@type' => 'orderBulkQuote', 'lineCount' => 2, 'discountedLines' => 1, 'city' => 'Berlin', 'voucherCount' => 3],
             $this->payload($response)
         );
         $this->assertSame('v1', $response->getMetadata()['version']);
@@ -86,53 +89,97 @@ class SmokeTest extends TestCase
         $this->assertArrayNotHasKey('lineCount', $this->payload($response));
     }
 
-    public function testRegisterAndReviseCollectsTheEventAsDomainEvent(): void
+    public function testRegisterAndReviseRunsBothCallNodesThroughTheFacadeSeam(): void
     {
         $kernel = new FakeKernel();
         $calls = [];
-        $kernel->onHandle(function (string $class, mixed ...$parameters) use (&$calls): DomainResponseInterface {
-            $calls[] = [$class, $parameters];
-
-            return new FakeDomainResponse(201);
-        });
+        $this->facade($kernel, $calls, 201, 200);
         $input = new RegisterAndReviseServiceOptOut(new ServiceRegistration('billing'), new UpdateServiceRegistration('billing'));
 
         $response = (new RegisterAndReviseServiceOptOutHandler($kernel, $input))();
 
         $this->assertSame(200, $response->getStatus());
-        $this->assertSame([[ServiceRegistration::class, [$input->registration]]], $calls, 'the call node used the kernel seam');
-        $events = $response->getEvents(EventScope::Domain);
-        $collected = array_merge(...array_values($events));
-        $this->assertCount(1, $collected);
-        $this->assertInstanceOf(ServiceRevised::class, $collected[0]);
-        $this->assertSame('billing', $collected[0]->name);
+        $this->assertSame(['create:billing', 'update:billing'], $calls, 'both call nodes used the facade the kernel hands out');
+        $this->assertSame([], $response->getEvents(EventScope::Domain));
     }
 
     public function testDeclaredRejectsEndTheRunWithTheirStatus(): void
     {
-        $clash = new FakeKernel();
-        $clash->onHandle(static fn(string $class, mixed ...$p): DomainResponseInterface => new FakeDomainResponse(409));
         $input = new RegisterAndReviseServiceOptOut(new ServiceRegistration('billing'), new UpdateServiceRegistration('billing'));
-        $this->assertSame(409, (new RegisterAndReviseServiceOptOutHandler($clash, $input))()->getStatus());
+
+        $clash = new FakeKernel();
+        $calls = [];
+        $this->facade($clash, $calls, 409, 200);
+        $response = (new RegisterAndReviseServiceOptOutHandler($clash, $input))();
+        $this->assertSame(409, $response->getStatus());
+        $this->assertSame(['create:billing'], $calls, 'the second node never runs after a reject');
+        $this->assertSame('registry.register_service_clash', $response->getData()['messageKey'] ?? null);
 
         $missing = new FakeKernel();
-        $missing->onHandle(static fn(string $class, mixed ...$p): DomainResponseInterface => new FakeDomainResponse(201));
-        $input = new RegisterAndReviseServiceOptOut(new ServiceRegistration('billing'), new UpdateServiceRegistration('missing'));
-        $this->assertSame(404, (new RegisterAndReviseServiceOptOutHandler($missing, $input))()->getStatus());
+        $calls = [];
+        $this->facade($missing, $calls, 201, 404);
+        $response = (new RegisterAndReviseServiceOptOutHandler($missing, $input))();
+        $this->assertSame(404, $response->getStatus());
+        $this->assertSame('registry.revise_target_missing', $response->getData()['messageKey'] ?? null);
     }
 
     public function testThrowingSeamAnswers500AndNoEventLeaks(): void
     {
         $kernel = new FakeKernel();
-        $kernel->onHandle(static function (string $class, mixed ...$p): DomainResponseInterface {
-            throw new \RuntimeException('callee down');
-        });
+        $kernel->register(RegistrationFacade::class, new RegistrationFacade(
+            static fn(ServiceRegistration $c): DomainResponseInterface => throw new \RuntimeException('callee down'),
+            static fn(UpdateServiceRegistration $c): DomainResponseInterface => new FakeDomainResponse(200)
+        ));
         $input = new RegisterAndReviseServiceOptOut(new ServiceRegistration('billing'), new UpdateServiceRegistration('billing'));
 
         $response = (new RegisterAndReviseServiceOptOutHandler($kernel, $input))();
 
         $this->assertSame(ResponseStatus::InternalError->value, $response->getStatus());
         $this->assertSame([], $response->getEvents(EventScope::Domain));
+    }
+
+    public function testVoucherRedeemCheckWithoutActorAnswers401BeforeAnyNode(): void
+    {
+        $response = (new VoucherRedeemCheckHandler(new FakeKernel(), new VoucherRedeemCheck('SPRING')))();
+
+        $this->assertSame(401, $response->getStatus());
+    }
+
+    public function testVoucherRedeemCheckPassesAndRejectsWith422(): void
+    {
+        $actor = new VoucherRedeemCheckActor('a-1', 'ak-1', 'sess-1', 'tenant-1');
+
+        $passed = (new VoucherRedeemCheckHandler(new FakeKernel(), new VoucherRedeemCheck('SPRING'), '', $actor))();
+        $this->assertSame(200, $passed->getStatus());
+
+        $unknown = (new VoucherRedeemCheckHandler(new FakeKernel(), new VoucherRedeemCheck('unknown'), '', $actor))();
+        $this->assertSame(422, $unknown->getStatus());
+        $this->assertSame('sales.voucher.notFound', $unknown->getData()['messageKey'] ?? null);
+
+        $expired = (new VoucherRedeemCheckHandler(new FakeKernel(), new VoucherRedeemCheck('expired'), '', $actor))();
+        $this->assertSame(422, $expired->getStatus());
+        $this->assertSame('VoucherIsRedeemable', $expired->getData()['rule'] ?? null);
+    }
+
+    /**
+     * Registers the facade of the aggregate on the kernel; the commands are noted in $calls.
+     *
+     * @param list<string> $calls
+     */
+    private function facade(FakeKernel $kernel, array &$calls, int $createStatus, int $updateStatus): void
+    {
+        $kernel->register(RegistrationFacade::class, new RegistrationFacade(
+            static function (ServiceRegistration $c) use (&$calls, $createStatus): DomainResponseInterface {
+                $calls[] = 'create:' . $c->name;
+
+                return new FakeDomainResponse($createStatus);
+            },
+            static function (UpdateServiceRegistration $c) use (&$calls, $updateStatus): DomainResponseInterface {
+                $calls[] = 'update:' . $c->name;
+
+                return new FakeDomainResponse($updateStatus);
+            }
+        ));
     }
 
     /**

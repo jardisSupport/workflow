@@ -1,6 +1,6 @@
 ---
 name: support-workflow
-description: jardissupport/workflow 2.3 - process engine for one request-response use case. Declare a node graph with ProcessDefinition, run it with ProcessRunner, get a typed ProcessOutcome; NodeResult (ok, route, reject, withEvents), ProcessContext, start validation (400/401, field `messageKey`), transaction bracket with savepoints, four failure forms, 5xx cause logged, envelope data per answer (BuildResponseData, declaredMessageKey, input field paths), sub-process node (MapOutcome). Use when working with ProcessRunner, ProcessDefinition, NodeResult, ProcessContext, BuildResponseData, declaredMessageKey, failure forms or jardissupport/workflow.
+description: jardissupport/workflow 3.0 - process engine for one request-response use case. Declare a node graph with ProcessDefinition, run it with ProcessRunner, get a typed ProcessOutcome; NodeResult (ok, route, reject, withEvents), ProcessContext, start validation (400/401, field `messageKey`), transaction bracket with savepoints, four failure forms, 5xx cause logged, envelope data per answer (BuildResponseData, declaredMessageKey, input field paths), sub-process node (MapOutcome). Use when working with ProcessRunner, ProcessDefinition, NodeResult, ProcessContext, BuildResponseData, declaredMessageKey, failure forms or jardissupport/workflow.
 user-invocable: false
 zone: post-active
 persona: C
@@ -9,7 +9,7 @@ next: [generated-code-workflow-api]
 ---
 
 # WORKFLOW_COMPONENT_SKILL
-> `jardissupport/workflow` 2.3 | NS: `JardisSupport\Workflow` | PHP 8.3+ | requires `jardissupport/contracts` ^2.12, `jardissupport/repository` ^1.6, `jardissupport/scheduling` ^1.2, `psr/log` ^3.0
+> `jardissupport/workflow` 3.0 | NS: `JardisSupport\Workflow` | PHP 8.3+ | requires `jardissupport/contracts` ^2.12, `jardissupport/repository` ^1.6, `jardissupport/scheduling` ^1.2, `psr/log` ^3.0
 
 ## Usage essentials
 
@@ -19,7 +19,7 @@ next: [generated-code-workflow-api]
 ProcessRunner::run($definition, $input, $actor, $nodeFactory, $parent = null)
   MapThrowable -> ValidateInput (400) -> CheckActor (401) -> Bracket (transaction) -> core
   core: CreateContext -> Workflow engine over the node chain -> BuildOutcome
-  per node: GuardLoop -> CollectEvents -> HydrateResponse -> PassThrough -> ApplyRuleMode -> your node
+  per node: GuardLoop -> CollectEvents -> HydrateResponse -> ApplyRuleMode -> your node
   -> ProcessOutcome { status, response, errors, events, cause }
 ```
 
@@ -115,7 +115,7 @@ An empty `context` encodes as `{}`. Dates: every `DateTimeInterface` in `data` (
 | 3 | `response(class)` needs a value for every required constructor parameter named by the fields (none named = all); missing value or unknown class -> 500 | `Context/HydrateResponse.php:54,68` |
 | 4 | `RuleMode::Decision` turns only a 422 into `OnFalse`; a 404 or 409 from the node stays a reject | `Node/ApplyRuleMode.php:35` |
 | 5 | A rejected result drops its events; a run that ends in a reject reports none | `Events/CollectEvents.php:30` |
-| 6 | `route()` with `null` data hands on the previous step's data, `ok([])` does not | `Outcome/PassThrough.php:30` |
+| 6 | Nothing is handed on between nodes (3.0): `route()` without data is a result without data, a last node without data answers `{}`; read earlier answers with `latest($node)` / `all($node)` | `Outcome/BuildOutcome.php` (`response`) |
 | 7 | An open transaction + connection without `SavepointInterface` -> `ConfigurationException` (500) | `Transaction/Bracket.php:84` |
 | 8 | `validate(Class)` never instantiates the class; the injected `ValidatorInterface` does the check | `Start/ValidateInput.php:35` |
 | 9 | The runner never calls `CheckRequires`; the generated handler does, before `run()` | `Start/CheckRequires.php:10-12` ("the runner never does") |
