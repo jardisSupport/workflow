@@ -4,6 +4,18 @@ All notable changes to `jardissupport/workflow` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [SemVer](https://semver.org/). Releases before 2.2.0 are listed in the git history and the GitHub releases.
 
+## [3.0.1]
+
+### Added
+
+- 200-empty case in the wire contract (`tests/Smoke/Contract/wire-contract.json`): a process whose last node answers
+  no data of its own (rule node, `VoucherRedeemCheck`) answers 200 with the envelope `data` `{"@type": "voucherRedeemCheck"}`.
+  `WireContractTest` now checks the case keys and the status of each of the eight cases.
+
+### Fixed
+
+- Documentation only: a last node without data does not answer `data: {}` but `data` with the `@type` only (README, skill); the behaviour is unchanged.
+
 ## [3.0.0]
 
 ### BREAKING

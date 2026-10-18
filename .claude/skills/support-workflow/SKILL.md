@@ -115,7 +115,7 @@ An empty `context` encodes as `{}`. Dates: every `DateTimeInterface` in `data` (
 | 3 | `response(class)` needs a value for every required constructor parameter named by the fields (none named = all); missing value or unknown class -> 500 | `Context/HydrateResponse.php:54,68` |
 | 4 | `RuleMode::Decision` turns only a 422 into `OnFalse`; a 404 or 409 from the node stays a reject | `Node/ApplyRuleMode.php:35` |
 | 5 | A rejected result drops its events; a run that ends in a reject reports none | `Events/CollectEvents.php:30` |
-| 6 | Nothing is handed on between nodes (3.0): `route()` without data is a result without data, a last node without data answers `{}`; read earlier answers with `latest($node)` / `all($node)` | `Outcome/BuildOutcome.php` (`response`) |
+| 6 | Nothing is handed on between nodes (3.0): `route()` without data is a result without data, a last node without data answers an empty response (envelope `data` = only `@type`); read earlier answers with `latest($node)` / `all($node)` | `Outcome/BuildOutcome.php` (`response`) |
 | 7 | An open transaction + connection without `SavepointInterface` -> `ConfigurationException` (500) | `Transaction/Bracket.php:84` |
 | 8 | `validate(Class)` never instantiates the class; the injected `ValidatorInterface` does the check | `Start/ValidateInput.php:35` |
 | 9 | The runner never calls `CheckRequires`; the generated handler does, before `run()` | `Start/CheckRequires.php:10-12` ("the runner never does") |

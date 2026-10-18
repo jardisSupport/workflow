@@ -29,6 +29,25 @@
                 }
             }
         },
+        "200-empty": {
+            "process": "VoucherRedeemCheck",
+            "scenario": "rule node is the last node and answers no data of its own, the answer is empty",
+            "envelope": {
+                "status": 200,
+                "data": {
+                    "@type": "voucherRedeemCheck"
+                },
+                "errors": {},
+                "meta": {
+                    "duration": 0.0,
+                    "contexts": [
+                        "VoucherRedeemCheckHandler"
+                    ],
+                    "timestamp": "2026-01-15T10:30:00+00:00",
+                    "version": ""
+                }
+            }
+        },
         "400": {
             "process": "OrderBulkQuote",
             "scenario": "start check: malformed input fields, no node runs",

@@ -429,7 +429,7 @@ $outcome = $runner->run($definition, new PlaceOrder('ACME', 1), null, $nodeFacto
 
 ## Answer of a run
 
-The answer of a successful run is the data of the **last node**, nothing else (workflow 3.0: no handing on). A last node without data - an event node, a rule node that only lets the run go on (`NodeResult::route(Route::OnTrue)`) - answers an empty response: `response()` is an empty object, the envelope `data` is `{}`. A node that needs the answer of an earlier node reads it explicitly through `ProcessContext::latest($node)` / `all($node)` (the typed getters of a generated context do exactly that); `previous()` is the result of the node run last, which can be a node without data.
+The answer of a successful run is the data of the **last node**, nothing else (workflow 3.0: no handing on). A last node without data - an event node, a rule node that only lets the run go on (`NodeResult::route(Route::OnTrue)`) - answers an empty response: `response()` is an empty object, the envelope `data` is `{"@type": "<processName>"}` (the type only, no fields). A node that needs the answer of an earlier node reads it explicitly through `ProcessContext::latest($node)` / `all($node)` (the typed getters of a generated context do exactly that); `previous()` is the result of the node run last, which can be a node without data.
 
 ```php
 // Middle node: only an event, no data
@@ -658,7 +658,7 @@ directories, so no `composer.json` of a consumer and no path repository is invol
 
 ## Wire contract
 
-`tests/Smoke/Contract/wire-contract.json` is the wire contract of the package: for every status 200, 400, 401, 404, 409, 422 and 500 the exact envelope (`status`, `data`, `errors`, `meta`) that a **generated process handler** answers - produced by the handlers of the smoke fixtures through the real runner, `BuildResponseData` and `TransformResponse` with a frozen clock, never by hand-built DTOs. A consumer that generates handlers (the Builder) reproduces these bytes per status; the file travels in the Composer archive (the only `tests/` path that is not `export-ignore`, see `.gitattributes`).
+`tests/Smoke/Contract/wire-contract.json` is the wire contract of the package: for the eight cases 200, 200-empty (the last node answers no data of its own: `data` carries only `@type`), 400, 401, 404, 409, 422 and 500 the exact envelope (`status`, `data`, `errors`, `meta`) that a **generated process handler** answers - produced by the handlers of the smoke fixtures through the real runner, `BuildResponseData` and `TransformResponse` with a frozen clock, never by hand-built DTOs. A consumer that generates handlers (the Builder) reproduces these bytes per case, and a release of the package or of a consumer must not drop one of the eight cases (proof by the file, not by a hand-built DTO); the file travels in the Composer archive (the only `tests/` path that is not `export-ignore`, see `.gitattributes`).
 
 - `WireContractTest` compares the file byte for byte (`EnvelopeJson` encoding). A drift fails the test.
 - The file changes only on purpose: `UPDATE_WIRE_CONTRACT=1` rewrites it, e.g. `docker compose run --rm --no-deps -e UPDATE_WIRE_CONTRACT=1 phpcli vendor/bin/phpunit --bootstrap ./tests/bootstrap.php --filter WireContractTest /app/tests`. A changed contract is a breaking change of the wire (major version) and goes into the changelog.
