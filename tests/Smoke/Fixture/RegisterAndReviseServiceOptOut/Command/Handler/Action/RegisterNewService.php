@@ -1,16 +1,17 @@
 <?php
 
-// Copy of the E3-P3 golden (builder commit 61b275eec), see tests/Smoke/SmokeTest.php. Do not edit by hand.
-// Only the body of __invoke() differs: it is the dev area of the node, filled for the smoke (stub: throws).
+// Copy of the generat (builder commit df33f2953, tests/Builder/Generated), see tests/Smoke/SmokeTest.php. Do not edit by hand.
 declare(strict_types=1);
 
 namespace Ops\Registry\Process\RegisterAndReviseServiceOptOut\Command\Handler\Action;
 
 use JardisSupport\Contract\Kernel\DomainResponseInterface;
-use JardisSupport\Contract\Kernel\ResponseStatus;
 use JardisSupport\Workflow\Data\NodeResult;
-use Ops\Registry\Model\ServiceRegistration\Command\ServiceRegistration;
+use JardisSupport\Workflow\Handler\Node\MapResponse;
+use Ops\OpsContext;
+use Ops\Registry\Model\ServiceRegistration\ServiceRegistration;
 use Ops\Registry\Process\RegisterAndReviseServiceOptOut\Command\Handler\RegisterAndReviseServiceOptOutContext;
+use Throwable;
 
 /**
  * Node RegisterNewService of the process RegisterAndReviseServiceOptOut (call).
@@ -21,28 +22,17 @@ use Ops\Registry\Process\RegisterAndReviseServiceOptOut\Command\Handler\Register
  *
  * Calls the facade Ops.Registry.ServiceRegistration, method ServiceRegistration.
  */
-final class RegisterNewService
+final class RegisterNewService extends OpsContext
 {
     /**
-     * @param \Closure(class-string, object): DomainResponseInterface $call The kernel seam of the handler
-     */
-    public function __construct(protected readonly \Closure $call)
-    {
-    }
-
-    /**
      * @node-id rar1
+     * @throws Throwable
      */
     public function __invoke(RegisterAndReviseServiceOptOutContext $ctx): NodeResult
     {
-        $answer = ($this->call)(ServiceRegistration::class, $ctx->input()->registration);
-        if (!$answer->isSuccess()) {
-            return NodeResult::reject(
-                ResponseStatus::from($answer->getStatus()),
-                'registry.register_service_clash'
-            );
-        }
+        /** @var DomainResponseInterface $response */
+        $response = $this->handle(ServiceRegistration::class)->createServiceRegistration($ctx->input()->registration);
 
-        return NodeResult::ok(['registered' => $ctx->input()->registration->name]);
+        return (new MapResponse())($response);
     }
 }

@@ -15,7 +15,8 @@ use JardisSupport\Workflow\Handler\Failure\BuildFailureOutcome;
 /**
  * Builds the final {@see ProcessOutcome} from the finished run.
  *
- * Success: status 200, the data of the last step as response object, the events of all steps in
+ * Success: status 200, the data of the last step as response object (a last step without data
+ * answers an empty object, nothing is handed on from earlier steps), the events of all steps in
  * execution order. Reject: the failure answer of the rejecting step ({@see BuildFailureOutcome}),
  * no events; its message key is the one the node declared for that status
  * ({@see ProcessDefinition::rejects()}) or, when it declared none, the one the reject carries.
@@ -96,7 +97,7 @@ final class BuildOutcome
 
     private function response(NodeResult $last): object
     {
-        $data = $last->data();
+        $data = $last->data() ?? [];
         if (!is_array($data) && !is_object($data)) {
             throw new ConstructionException('The answer of a run must be an array or an object');
         }

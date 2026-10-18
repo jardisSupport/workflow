@@ -24,7 +24,6 @@ use JardisSupport\Workflow\Handler\Node\ApplyRuleMode;
 use JardisSupport\Workflow\Handler\Node\ResolveNode;
 use JardisSupport\Workflow\Handler\Outcome\BuildOutcome;
 use JardisSupport\Workflow\Handler\Outcome\ExecuteProcess;
-use JardisSupport\Workflow\Handler\Outcome\PassThrough;
 use JardisSupport\Workflow\Handler\Routing\Workflow;
 use JardisSupport\Workflow\Handler\Start\CheckActor;
 use JardisSupport\Workflow\Handler\Start\ResolveConnection;
@@ -36,8 +35,10 @@ use Psr\Log\LoggerInterface;
  * Runs a process definition and answers with a {@see ProcessOutcome}.
  *
  * Pure composition, no logic of its own. Each node is wrapped, outside in, by GuardLoop,
- * CollectEvents, HydrateResponse, PassThrough and ApplyRuleMode; the engine walks the graph over
- * that chain and BuildOutcome turns the finished run into the answer. The run itself sits in
+ * CollectEvents, HydrateResponse and ApplyRuleMode; the engine walks the graph over that chain and
+ * BuildOutcome turns the finished run into the answer. Nothing is handed on between nodes: the
+ * answer is what the last node returned, a later node reads earlier data explicitly through
+ * {@see ProcessContext::latest()} / {@see ProcessContext::all()}. The run itself sits in
  * layers, outside in: LogCause, MapThrowable, ValidateInput, CheckActor, Bracket, then the core.
  *
  * The connection is optional: a process that opted out of the transaction runs without one, a
@@ -62,7 +63,6 @@ final class ProcessRunner
                 new GuardLoop(),
                 new CollectEvents(),
                 new HydrateResponse(),
-                new PassThrough(),
                 new ApplyRuleMode(),
             ]),
             static fn(\Closure $inner, callable $decorator): \Closure => static fn(

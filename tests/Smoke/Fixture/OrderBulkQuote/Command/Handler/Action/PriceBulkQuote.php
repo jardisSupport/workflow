@@ -1,14 +1,14 @@
 <?php
 
-// Copy of the E3-P3 golden (builder commit 61b275eec), see tests/Smoke/SmokeTest.php. Do not edit by hand.
+// Copy of the generat (builder commit df33f2953, tests/Builder/Generated), see tests/Smoke/SmokeTest.php. Do not edit by hand.
 // Only the body of __invoke() differs: it is the dev area of the node, filled for the smoke (stub: throws).
 declare(strict_types=1);
 
 namespace Ecommerce\Sales\Process\OrderBulkQuote\Command\Handler\Action;
 
+use Ecommerce\EcommerceContext;
 use Ecommerce\Sales\Process\OrderBulkQuote\Command\Handler\OrderBulkQuoteContext;
 use Ecommerce\Sales\Process\OrderBulkQuote\Command\OrderBulkQuoteLinesItem;
-use JardisSupport\Contract\Kernel\DomainResponseInterface;
 use JardisSupport\Workflow\Data\NodeResult;
 
 /**
@@ -17,15 +17,8 @@ use JardisSupport\Workflow\Data\NodeResult;
  * Bepreist die Angebotspositionen. Der Koerper ist Dev-Code; der
  * Eingang ist vor dem ersten Knoten vollstaendig geprueft.
  */
-final class PriceBulkQuote
+final class PriceBulkQuote extends EcommerceContext
 {
-    /**
-     * @param \Closure(class-string, object): DomainResponseInterface $call The kernel seam of the handler
-     */
-    public function __construct(protected readonly \Closure $call)
-    {
-    }
-
     /**
      * @node-id q1w2e3r4
      */

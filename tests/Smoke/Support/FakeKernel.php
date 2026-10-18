@@ -8,7 +8,6 @@ use JardisSupport\Contract\Auth\AuthServicesInterface;
 use JardisSupport\Contract\EventListener\EventListenerRegistryInterface;
 use JardisSupport\Contract\Filesystem\FilesystemServiceInterface;
 use JardisSupport\Contract\Kernel\DomainKernelInterface;
-use JardisSupport\Contract\Kernel\DomainResponseInterface;
 use JardisSupport\Contract\Mailer\MailerInterface;
 use JardisSupport\Contract\Messaging\MessagingServiceInterface;
 use PDO;
@@ -21,13 +20,13 @@ use Psr\SimpleCache\CacheInterface;
 /**
  * Fake kernel of the smoke: a SQLite PDO as database, nothing else.
  *
- * Also holds the seam the stub context's `handle()` calls: the test registers what the "other side"
- * of a call node answers.
+ * Also holds the facades the stub context's `handle()` answers: the test registers what the "other side"
+ * of a call node is.
  */
 final class FakeKernel implements DomainKernelInterface
 {
-    /** @var \Closure(string, mixed...): DomainResponseInterface|null */
-    private ?\Closure $seam = null;
+    /** @var array<class-string, object> */
+    private array $facades = [];
 
     private readonly PDO $pdo;
 
@@ -39,16 +38,21 @@ final class FakeKernel implements DomainKernelInterface
     }
 
     /**
-     * @param \Closure(string, mixed...): DomainResponseInterface $seam
+     * Registers what `handle($class)` of a node answers: the "other side" of a call node.
+     *
+     * @param class-string $className
      */
-    public function onHandle(\Closure $seam): void
+    public function register(string $className, object $facade): void
     {
-        $this->seam = $seam;
+        $this->facades[$className] = $facade;
     }
 
-    public function handle(string $className, mixed ...$parameters): DomainResponseInterface
+    /**
+     * @param class-string $className
+     */
+    public function facade(string $className): ?object
     {
-        return ($this->seam ?? throw new \LogicException('no handle() seam registered'))($className, ...$parameters);
+        return $this->facades[$className] ?? null;
     }
 
     public function pdo(): PDO

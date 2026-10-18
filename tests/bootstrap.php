@@ -21,6 +21,9 @@ if ($loader instanceof \Composer\Autoload\ClassLoader) {
         $smoke . '/Fixture/RegisterAndReviseServiceOptOut',
         $smoke . '/Support/Stub/Ops/Registry/Process/RegisterAndReviseServiceOptOut',
     ]);
+    $loader->addPsr4('Ecommerce\\Sales\\Process\\VoucherRedeemCheck\\', [
+        $smoke . '/Fixture/VoucherRedeemCheck',
+    ]);
     $loader->addPsr4('Ecommerce\\', $smoke . '/Support/Stub/Ecommerce');
     $loader->addPsr4('Ops\\', $smoke . '/Support/Stub/Ops');
 }
