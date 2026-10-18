@@ -4,6 +4,32 @@ All notable changes to `jardissupport/workflow` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [SemVer](https://semver.org/). Releases before 2.2.0 are listed in the git history and the GitHub releases.
 
+## [3.0.0]
+
+### BREAKING
+
+- **No more handing on between nodes.** The node decorator `Handler/Outcome/PassThrough` is removed (the class is
+  gone). Before, a routed `NodeResult` without data (`NodeResult::route(Route::OnTrue)`, an event node, a rule
+  node) took over the data of the node before it. Now the answer of a successful run is the data of the last
+  node only: a last node without data answers an empty response (`response()` is an empty object, the envelope
+  `data` is `{}`), and a node that follows a node without data sees `null` from `previous()?->data()`.
+- **Migration:** a node that read the answer of its predecessor through `previous()` reads it explicitly with
+  `latest('<node>')` / `all('<node>')` (typed getters of a generated context already do); a process whose last
+  node is an event or rule node without data and which should answer data lets that node return the data itself
+  (`NodeResult::ok($data)`) or reads it with `latest()`.
+
+### Added
+
+- **Wire contract** `tests/Smoke/Contract/wire-contract.json`: the envelope bytes per status (200, 400, 401, 404,
+  409, 422, 500) that generated process handlers answer, compared byte for byte by `WireContractTest`, rewritten
+  only with `UPDATE_WIRE_CONTRACT=1`. Shipped in the Composer archive (`.gitattributes`: only this path of `tests/`
+  is not `export-ignore`).
+
+### Changed
+
+- The smoke fixtures are copies of the current generat (`BuildResponseData`, `transformer()`, actor channel, nodes
+  that extend the domain context, `input()` declarations); new fixture `VoucherRedeemCheck` (actor, rule node).
+
 ## [2.3.0]
 
 ### Added

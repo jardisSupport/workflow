@@ -109,8 +109,9 @@ class EventsAndAnswerTest extends RunnerTestCase
         $this->assertEquals((object) ['via' => 'C'], $outcome->response());
     }
 
-    public function testEventRuleEventAtTheEndAnswersWithTheLastAnswerNode(): void
+    public function testEventEndNodeWithoutDataAnswersAnEmptyObject(): void
     {
+        // workflow 3.0: kein Durchreichen (STOPP 2, 9b) - the answer is what the last node returned.
         $definition = ProcessDefinition::for('In', 'P')
             ->node(self::A)->onTrue(self::B)
             ->node(self::B)->onTrue(self::C)
@@ -127,12 +128,55 @@ class EventsAndAnswerTest extends RunnerTestCase
             self::D => static fn(ProcessContext $c): NodeResult => NodeResult::route(Route::OnTrue)->withEvents($e2),
         ]));
 
-        $this->assertEquals((object) ['id' => 7], $outcome->response());
+        $this->assertEquals(new \stdClass(), $outcome->response());
+        $this->assertSame('{}', json_encode($outcome->response()));
         $this->assertSame([$e1, $e2], $outcome->events());
     }
 
-    public function testWithoutAnyPrecedingAnswerAnEventNodeHandsOnAnEmptyArray(): void
+    public function testMiddleNodeWithoutDataLeavesTheFollowerToReadThePredecessorExplicitly(): void
     {
+        // workflow 3.0: kein Durchreichen (STOPP 2, 9b) - previous() is the dataless node, latest() the answer node.
+        $definition = ProcessDefinition::for('In', 'P')
+            ->node(self::A)->onTrue(self::B)
+            ->node(self::B)->onTrue(self::C)
+            ->node(self::C)->terminal()
+            ->build();
+        $seenPrevious = 'unset';
+
+        $outcome = $this->runner()->run($definition, new \stdClass(), null, $this->factory([
+            self::A => static fn(ProcessContext $c): NodeResult => NodeResult::ok(['id' => 7]),
+            self::B => static fn(ProcessContext $c): NodeResult => NodeResult::route(Route::OnTrue)->withEvents(new \stdClass()),
+            self::C => static function (ProcessContext $c) use (&$seenPrevious): NodeResult {
+                $seenPrevious = $c->previous()?->data();
+
+                return NodeResult::ok(['id' => $c->latest(self::A)?->data()['id'] ?? null]);
+            },
+        ]));
+
+        $this->assertNull($seenPrevious, 'nothing is handed on from node A through node B');
+        $this->assertEquals((object) ['id' => 7], $outcome->response());
+    }
+
+    public function testRejectIsUntouchedByTheMissingPassThrough(): void
+    {
+        // workflow 3.0: kein Durchreichen (STOPP 2, 9b) - a reject keeps its failure answer.
+        $definition = ProcessDefinition::for('In', 'P')
+            ->node(self::A)->onTrue(self::B)
+            ->node(self::B)->terminal()
+            ->build();
+
+        $outcome = $this->runner()->run($definition, new \stdClass(), null, $this->factory([
+            self::A => static fn(ProcessContext $c): NodeResult => NodeResult::route(Route::OnTrue),
+            self::B => static fn(ProcessContext $c): NodeResult => NodeResult::reject(ResponseStatus::Conflict, 'p.clash', ['field' => 'x']),
+        ]));
+
+        $this->assertSame(ResponseStatus::Conflict, $outcome->status());
+        $this->assertEquals(new Conflict('p.clash', ['field' => 'x'], '', '', []), $outcome->response());
+    }
+
+    public function testWithoutAnyAnswerAnEventNodeSeesNullAndTheRunAnswersAnEmptyObject(): void
+    {
+        // workflow 3.0: kein Durchreichen (STOPP 2, 9b) - formerly the follower saw [].
         $definition = ProcessDefinition::for('In', 'P')
             ->node(self::A)->onTrue(self::B)
             ->node(self::B)->terminal()
@@ -148,7 +192,7 @@ class EventsAndAnswerTest extends RunnerTestCase
             },
         ]));
 
-        $this->assertSame([], $seen);
+        $this->assertNull($seen);
         $this->assertEquals(new \stdClass(), $outcome->response());
     }
 }

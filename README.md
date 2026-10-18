@@ -148,7 +148,7 @@ final class CheckCredit
     {
         return $context->input()->qty > 100
             ? NodeResult::reject(ResponseStatus::RuleViolation, 'order.creditExceeded', ['rule' => 'CreditLimit'])
-            : NodeResult::route(Route::OnTrue); // no data: the data of the node before is handed on
+            : NodeResult::route(Route::OnTrue); // no data: nothing is handed on, the next node reads the earlier answer itself
     }
 }
 
@@ -276,7 +276,7 @@ run(
 ): ProcessOutcome
 ```
 
-The runner is pure composition; it holds no state between runs. The node factory is called each time a node is due, also on every loop pass. Layers, outside in: `LogCause`, `MapThrowable`, `ValidateInput`, `CheckActor`, `Bracket`, then the core. Around each node: `GuardLoop`, `CollectEvents`, `HydrateResponse`, `PassThrough`, `ApplyRuleMode`.
+The runner is pure composition; it holds no state between runs. The node factory is called each time a node is due, also on every loop pass. Layers, outside in: `LogCause`, `MapThrowable`, `ValidateInput`, `CheckActor`, `Bracket`, then the core. Around each node: `GuardLoop`, `CollectEvents`, `HydrateResponse`, `ApplyRuleMode`. Nothing is handed on from node to node (see "Answer of a run").
 
 **Connection.** The connection is optional. `forKernel()` also hands the kernel's `logger()` (PSR-3, may be none) to the runner. It resolves the connection with `ResolveConnection` from `$kernel->dbConnection()`: a `ConnectionPoolInterface` gives its `getWriter()`, a plain `PDO` is wrapped in `PdoConnection` (transactions and savepoints), no database gives `null`. A transactional process without a connection ends with 500 (`ConfigurationException`, message key `process.connectionMissing`); a process with `transactional(false)` runs without one.
 
@@ -314,7 +314,7 @@ The chain is immutable: the engine hands every step a new context (`withStep()`,
 | Factory | Meaning |
 |---------|---------|
 | `NodeResult::ok(array\|object $data)` | Success, takes `Route::OnTrue` with data |
-| `NodeResult::route(Route $route, mixed $data = null)` | Take a named route; `null` data hands on the data of the previous step (`PassThrough`) |
+| `NodeResult::route(Route $route, mixed $data = null)` | Take a named route; `null` data means a result without data - nothing is handed on from the previous step |
 | `NodeResult::reject(ResponseStatus $status, string $messageKey, array $context = [], array $errors = [])` | End the run with a 4xx; any other status throws `ConstructionException` |
 | `->withEvents(object ...$events)` | New result carrying the events (replaces earlier ones) |
 
@@ -426,6 +426,20 @@ $outcome = $runner->run($definition, new PlaceOrder('ACME', 1), null, $nodeFacto
 ```
 
 ---
+
+## Answer of a run
+
+The answer of a successful run is the data of the **last node**, nothing else (workflow 3.0: no handing on). A last node without data - an event node, a rule node that only lets the run go on (`NodeResult::route(Route::OnTrue)`) - answers an empty response: `response()` is an empty object, the envelope `data` is `{}`. A node that needs the answer of an earlier node reads it explicitly through `ProcessContext::latest($node)` / `all($node)` (the typed getters of a generated context do exactly that); `previous()` is the result of the node run last, which can be a node without data.
+
+```php
+// Middle node: only an event, no data
+$notify = static fn(ProcessContext $c): NodeResult => NodeResult::route(Route::OnTrue)->withEvents(new OrderPlaced('O-1'));
+
+// Last node: does not rely on the node before, it asks for the answer it needs
+$confirm = static fn(ProcessContext $c): NodeResult => NodeResult::ok(['sku' => $c->latest(ReserveStock::class)?->data()['sku']]);
+```
+
+A reject is unaffected: it ends the run with its failure form.
 
 ## Answers and failures
 
@@ -636,11 +650,18 @@ $response->getMetadata(); // duration, contexts, timestamp, version
 ## Testing against generated code
 
 The generated process classes of the builder run as PHP against the working tree of this package in `tests/Smoke`:
-copies of the builder goldens (`tests/Smoke/Fixture`, builder commit named in each file header) plus stubs of the
+copies of the generat (`tests/Smoke/Fixture`, builder commit named in each file header) plus stubs of the
 generat's foreign classes (`tests/Smoke/Support`). `tests/bootstrap.php` maps the generat namespaces to those
 directories, so no `composer.json` of a consumer and no path repository is involved - packages come from Packagist only.
 `make phpunit` runs the suite, `make phpstan-smoke` analyses it; a finding that sits in the generat is listed in
 `phpstan-smoke.neon` for the renderer, never worked around in the smoke code.
+
+## Wire contract
+
+`tests/Smoke/Contract/wire-contract.json` is the wire contract of the package: for every status 200, 400, 401, 404, 409, 422 and 500 the exact envelope (`status`, `data`, `errors`, `meta`) that a **generated process handler** answers - produced by the handlers of the smoke fixtures through the real runner, `BuildResponseData` and `TransformResponse` with a frozen clock, never by hand-built DTOs. A consumer that generates handlers (the Builder) reproduces these bytes per status; the file travels in the Composer archive (the only `tests/` path that is not `export-ignore`, see `.gitattributes`).
+
+- `WireContractTest` compares the file byte for byte (`EnvelopeJson` encoding). A drift fails the test.
+- The file changes only on purpose: `UPDATE_WIRE_CONTRACT=1` rewrites it, e.g. `docker compose run --rm --no-deps -e UPDATE_WIRE_CONTRACT=1 phpcli vendor/bin/phpunit --bootstrap ./tests/bootstrap.php --filter WireContractTest /app/tests`. A changed contract is a breaking change of the wire (major version) and goes into the changelog.
 
 ## Documentation
 
