@@ -26,8 +26,8 @@ use PHPUnit\Framework\TestCase;
 /**
  * The wire contract of the package: the envelope bytes a generated process handler answers per status.
  *
- * `Contract/wire-contract.json` holds, for the statuses 200, 400, 401, 404, 409, 422 and 500, the envelope
- * (status, data, errors, meta) that the generated handlers of the smoke fixtures produce - the real runner,
+ * `Contract/wire-contract.json` holds, for the eight cases 200, 200-empty (a last node without an answer of
+ * its own: `data` carries only the `@type`), 400, 401, 404, 409, 422 and 500, the envelope (status, data, errors, meta) that the generated handlers of the smoke fixtures produce - the real runner,
  * the real `BuildResponseData` and `TransformResponse`, a frozen clock. The file is compared byte for byte;
  * it is also what a consumer (the Builder's generated handlers) has to reproduce, and it ships with the
  * package (the one `tests/` path that is not `export-ignore`, see `.gitattributes`).
@@ -58,10 +58,22 @@ class WireContractTest extends TestCase
     {
         $cases = $this->document()['cases'];
 
-        $this->assertSame([200, 400, 401, 404, 409, 422, 500], array_map('intval', array_keys($cases)));
-        foreach ($cases as $status => $case) {
-            $this->assertSame((int) $status, $case['envelope']['status']);
+        $expected = [
+            ['200', 200],
+            ['200-empty', 200],
+            ['400', 400],
+            ['401', 401],
+            ['404', 404],
+            ['409', 409],
+            ['422', 422],
+            ['500', 500],
+        ];
+
+        $this->assertSame(array_column($expected, 0), array_map('strval', array_keys($cases)));
+        foreach ($expected as [$key, $status]) {
+            $this->assertSame($status, $cases[$key]['envelope']['status'], 'case ' . $key);
         }
+        $this->assertSame(['@type' => 'voucherRedeemCheck'], $cases['200-empty']['envelope']['data']);
     }
 
     /**
@@ -78,6 +90,7 @@ class WireContractTest extends TestCase
             ],
             'cases' => [
                 '200' => $this->case('OrderBulkQuote', 'valid input, one action node answers a typed response', $this->success()),
+                '200-empty' => $this->case('VoucherRedeemCheck', 'rule node is the last node and answers no data of its own, the answer is empty', $this->successWithoutAnswer()),
                 '400' => $this->case('OrderBulkQuote', 'start check: malformed input fields, no node runs', $this->invalidInput()),
                 '401' => $this->case('VoucherRedeemCheck', 'start check: the declared actor is missing, no node runs', $this->actorMissing()),
                 '404' => $this->case('RegisterAndReviseServiceOptOut', 'second call node: the callee answers 404, declared key', $this->revisionTargetMissing()),
@@ -99,6 +112,13 @@ class WireContractTest extends TestCase
     private function success(): DomainResponseInterface
     {
         return (new OrderBulkQuoteHandler(new FakeKernel(), $this->quote(), 'v1'))();
+    }
+
+    private function successWithoutAnswer(): DomainResponseInterface
+    {
+        $actor = new VoucherRedeemCheckActor('a-1', 'ak-1', 'sess-1', 'tenant-1');
+
+        return (new VoucherRedeemCheckHandler(new FakeKernel(), new VoucherRedeemCheck('SPRING'), '', $actor))();
     }
 
     private function invalidInput(): DomainResponseInterface
