@@ -267,7 +267,7 @@ The chain is immutable: the engine hands every step a new context (`withStep()`,
 
 Readers: `takenRoute()` (null exactly for a reject), `data()`, `isRejected()`, `status()`, `messageKey()`, `context()`, `errors()`, `events()`.
 
-**Call nodes.** `MapResponse` turns the answer of a called domain operation (a `DomainResponseInterface` - an aggregate command, or the inner door of a sub-process) into a node result: 2xx becomes `ok(data)` carrying the events of the callee (the contract keys them by scope, they travel on flattened), 4xx a `reject` with the same status whose context is the *plain* context of the callee, every other status throws. The form of the callee's data is unpacked, so the process answers the same form again (no form inside a form):
+**Call nodes.** `MapResponse` turns the answer of a called domain operation (a `DomainResponseInterface` - an aggregate command, or the inner door of a sub-process) into a node result: 2xx becomes `ok(data)` carrying the events of the callee (the contract keys them by scope, they travel on flattened), 4xx a `reject` with the same status whose context is the *plain* context of the callee, every other status throws: a 5xx a `CalleeFailureException` (a `\RuntimeException` carrying the marker `ReportedFailureExceptionInterface` - the inner door has already reported the cause, so the outer door does not log it again), any other status without a node meaning (302, 418) a plain `\RuntimeException`. The form of the callee's data is unpacked, so the process answers the same form again (no form inside a form):
 
 | Callee status | Reject context | Reject `messageKey` |
 |---------------|----------------|---------------------|
@@ -277,7 +277,7 @@ Readers: `takenRoute()` (null exactly for a reject), `data()`, `isRejected()`, `
 | 422 | `rule`, plus the inner `context` | the callee's `messageKey` |
 | other 4xx (401, 403, ...) | the data unchanged, a `messageKey` in it stays where it is | `''` |
 
-`@type` is dropped. The message key travels as the reject key only for 422; for 400, 404 and 409 the key is left to the node's declaration (`rejects()`), and a status without a form passes its data through unchanged. The form's own fields win over an inner context key of the same name. With `$onReject` (`(new MapResponse())($response, Route::OnFalse)`) a 4xx becomes a route instead: the dev decision to carry on rather than refuse; a 5xx throws either way.
+`@type` is dropped. The message key travels as the reject key only for 422; for 400, 404 and 409 the key is left to the node's declaration (`rejects()`), and a status without a form passes its data through unchanged. The form's own fields win over an inner context key of the same name. With `$onReject` (`(new MapResponse())($response, Route::OnFalse)`) a 4xx becomes a route instead: the dev decision to carry on rather than refuse; a 5xx throws either way, as a `CalleeFailureException`.
 
 ```php
 $result = (new MapResponse())($notFoundResponse); // 404 with data ['@type' => 'notFound', 'context' => ['sku' => 'Z-9']]

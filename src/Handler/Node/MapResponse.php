@@ -8,6 +8,7 @@ use JardisSupport\Contract\Kernel\DomainResponseInterface;
 use JardisSupport\Contract\Kernel\ResponseStatus;
 use JardisSupport\Workflow\Data\NodeResult;
 use JardisSupport\Workflow\Data\Route;
+use JardisSupport\Workflow\Exception\CalleeFailureException;
 
 /**
  * Maps the answer of a called domain operation - an aggregate command, or the inner door of a sub-process -
@@ -22,12 +23,15 @@ use JardisSupport\Workflow\Data\Route;
  * 409 it is left to the node's declaration ({@see \JardisSupport\Workflow\Data\ProcessDefinition::rejects()}).
  * Any other 4xx (401, 403, ...) has no form: its data passes through unchanged as the context, a key in it
  * stays where it is. The callee's error messages are flattened into one list, their field keys are dropped.
- * Every other status is a technical failure and throws; so is a 5xx even with `$onReject`.
+ * Every other status is a technical failure and throws; so is a 5xx even with `$onReject`. A 5xx throws a
+ * {@see CalleeFailureException}, which carries the marker "cause already reported" because the inner door has
+ * logged it; any other status throws a plain `\RuntimeException`.
  */
 final class MapResponse
 {
     /**
-     * @throws \RuntimeException on a 5xx or any status without a node meaning
+     * @throws CalleeFailureException on a 5xx
+     * @throws \RuntimeException on any other status without a node meaning
      */
     public function __invoke(DomainResponseInterface $response, ?Route $onReject = null): NodeResult
     {
@@ -36,6 +40,9 @@ final class MapResponse
         $reject = ResponseStatus::tryFrom($status);
         if ($status >= 200 && $status < 300) {
             return NodeResult::ok($data)->withEvents(...array_merge([], ...array_values($response->getEvents())));
+        }
+        if ($status >= 500 && $status < 600) {
+            throw new CalleeFailureException(sprintf('Operation answered with status %d', $status));
         }
         if ($status < 400 || $status >= 500 || $reject === null) {
             throw new \RuntimeException(sprintf('Operation answered with status %d', $status));

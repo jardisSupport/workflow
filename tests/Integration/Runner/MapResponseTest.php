@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace JardisSupport\Workflow\Tests\Integration\Runner;
 
+use JardisSupport\Contract\Kernel\ReportedFailureExceptionInterface;
 use JardisSupport\Contract\Kernel\ResponseStatus;
 use JardisSupport\Workflow\Data\NodeResult;
 use JardisSupport\Workflow\Data\ProcessContext;
 use JardisSupport\Workflow\Data\ProcessDefinition;
 use JardisSupport\Workflow\Data\Route;
+use JardisSupport\Workflow\Exception\CalleeFailureException;
 use JardisSupport\Workflow\Handler\Node\MapResponse;
 use JardisSupport\Workflow\Tests\Support\FakeDomainResponse;
 use JardisSupport\Workflow\Tests\Support\RunnerTestCase;
@@ -148,16 +150,42 @@ class MapResponseTest extends RunnerTestCase
      */
     public static function technicalStatuses(): array
     {
-        return ['500' => [500], '503' => [503], '302' => [302], '418 (no 4xx status of the contract)' => [418]];
+        return ['500' => [500], '503' => [503]];
+    }
+
+    /**
+     * @return array<string, array{int}>
+     */
+    public static function statusesWithoutNodeMeaning(): array
+    {
+        return ['302' => [302], '418 (no 4xx status of the contract)' => [418]];
     }
 
     #[DataProvider('technicalStatuses')]
-    public function testEveryOtherStatusThrows(int $status): void
+    public function testA5xxThrowsACalleeFailureCarryingTheReportedMarker(int $status): void
     {
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage((string) $status);
+        try {
+            (new MapResponse())(new FakeDomainResponse($status, ['messageKey' => 'ignored']));
+            $this->fail('A 5xx must throw');
+        } catch (\Throwable $thrown) {
+            $this->assertInstanceOf(CalleeFailureException::class, $thrown);
+            $this->assertInstanceOf(ReportedFailureExceptionInterface::class, $thrown);
+            $this->assertInstanceOf(\RuntimeException::class, $thrown);
+            $this->assertSame(sprintf('Operation answered with status %d', $status), $thrown->getMessage());
+        }
+    }
 
-        (new MapResponse())(new FakeDomainResponse($status, ['messageKey' => 'ignored']));
+    #[DataProvider('statusesWithoutNodeMeaning')]
+    public function testAStatusWithoutNodeMeaningThrowsAPlainRuntimeException(int $status): void
+    {
+        try {
+            (new MapResponse())(new FakeDomainResponse($status, ['messageKey' => 'ignored']));
+            $this->fail('A status without node meaning must throw');
+        } catch (\RuntimeException $thrown) {
+            $this->assertNotInstanceOf(ReportedFailureExceptionInterface::class, $thrown);
+            $this->assertNotInstanceOf(CalleeFailureException::class, $thrown);
+            $this->assertStringContainsString((string) $status, $thrown->getMessage());
+        }
     }
 
     public function testPassesInnerEventsThrough(): void
@@ -191,6 +219,22 @@ class MapResponseTest extends RunnerTestCase
 
     #[DataProvider('technicalStatuses')]
     public function testATechnicalStatusIsNeverRoutedAwayByOnReject(int $status): void
+    {
+        $this->expectException(CalleeFailureException::class);
+
+        (new MapResponse())(new FakeDomainResponse($status), Route::OnFalse);
+    }
+
+    #[DataProvider('technicalStatuses')]
+    public function testA5xxWithOnRejectStillCarriesTheReportedMarker(int $status): void
+    {
+        $this->expectException(ReportedFailureExceptionInterface::class);
+
+        (new MapResponse())(new FakeDomainResponse($status), Route::OnFalse);
+    }
+
+    #[DataProvider('statusesWithoutNodeMeaning')]
+    public function testAStatusWithoutNodeMeaningIsNeverRoutedAwayByOnReject(int $status): void
     {
         $this->expectException(\RuntimeException::class);
 

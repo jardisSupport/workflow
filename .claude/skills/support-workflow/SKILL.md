@@ -58,7 +58,7 @@ $outcome->events();   // the door publishes these AFTER the commit
 | `NodeResult` | `ok(array\|object)`, `route(Route, data = null)`, `reject(status, messageKey, context = [], errors = [])`, `withEvents(object ...)`; readers `takenRoute data isRejected status messageKey context errors events` |
 | `ProcessContext` (not final) | `input actor previous latest(node) all(node) iteration(node) chain depth` |
 | `ProcessOutcome` | `status response errors events messageKey context` |
-| `MapResponse` | `__invoke(DomainResponseInterface, ?Route $onReject = null): NodeResult` (2xx ok + the events of the callee flattened; 4xx reject with the callee's plain context - `@type` dropped, inner `context` lifted, 400 `fields` / 409 `reason aggregate violated` / 422 `rule` kept; callee key only for 422; other 4xx e.g. 401/403: data unchanged as context; `$onReject` routes a 4xx instead; else throws) |
+| `MapResponse` | `__invoke(DomainResponseInterface, ?Route $onReject = null): NodeResult` (2xx ok + the events of the callee flattened; 4xx reject with the callee's plain context - `@type` dropped, inner `context` lifted, 400 `fields` / 409 `reason aggregate violated` / 422 `rule` kept; callee key only for 422; other 4xx e.g. 401/403: data unchanged as context; `$onReject` routes a 4xx instead; else throws: a 5xx a `CalleeFailureException` carrying the marker `ReportedFailureExceptionInterface`, any other status a plain `\RuntimeException`) |
 
 ## Full reference
 
@@ -68,7 +68,7 @@ $outcome->events();   // the door publishes these AFTER the commit
 
 **Reject in the outcome.** Status = the 4xx, empty `response()`, `errors()` of the reject, no events, `messageKey()` = the key the node declared with `rejects(status, key)`, else the one the reject names, `context()` = the reject context. With `input(property)` on the node, a 400 reject prefixes its `fields[].field` with `<property>.`; other statuses unchanged (`BuildOutcome.php:45-46`, `prefixed`). The failure form and the wire envelope are built by the door.
 
-**What the engine throws.** `ConstructionException` (not callable node, bad context class, unhydratable response, merged list, built definition changed), `UnroutedStatusException` (route without declared key), `LoopLimitExceededException` (`getLimit()`), `\RuntimeException` from `MapResponse` on a 5xx; a node's own exceptions pass through. The engine answers no 500 and no 409: the door maps the throwables.
+**What the engine throws.** `ConstructionException` (not callable node, bad context class, unhydratable response, merged list, built definition changed), `UnroutedStatusException` (route without declared key), `LoopLimitExceededException` (`getLimit()`), `CalleeFailureException` from `MapResponse` on a 5xx (a `\RuntimeException` carrying the marker `ReportedFailureExceptionInterface`: the cause was already reported by the inner door, so the door does not log it again), a plain `\RuntimeException` on any other status without a node meaning; a node's own exceptions pass through. The engine answers no 500 and no 409: the door maps the throwables.
 
 **Sub-process.** The engine knows none: a node runs the inner process with `depth + 1` through the inner door and hands the `DomainResponseInterface` it answers to `(new MapResponse())($answer, $onReject)`: events travel up, an inner 4xx is rejected again with the same status or routed with `$onReject`.
 
@@ -93,7 +93,7 @@ $outcome->events();   // the door publishes these AFTER the commit
 | 9 | The loop limit is checked before the node is built; the exceeding step never runs and `run()` throws | `Loop/GuardLoop.php:30` |
 | 10 | After `build()` every mutator (also `answer()`) throws; a context class must extend `ProcessContext` | `ProcessDefinition.php:383-389`, `Context/CreateContext.php:23` |
 | 11 | `withEvents()` replaces earlier events of the same result | `NodeResult.php:74` |
-| 12 | `MapResponse` carries a callee message key only for 422 (400/404/409: only the key declared with `rejects()` reaches the outcome); a 5xx throws even with `$onReject` | `Handler/Node/MapResponse.php` |
+| 12 | `MapResponse` carries a callee message key only for 422 (400/404/409: only the key declared with `rejects()` reaches the outcome); a 5xx throws a `CalleeFailureException` (marker: cause already reported) even with `$onReject` | `Handler/Node/MapResponse.php` |
 | 13 | `input(property)` prefixes only the `fields` of a 400 reject of its node; a reject without `fields` or with another status stays unchanged | `Handler/Outcome/BuildOutcome.php:85` |
 
 ## Layer rules
