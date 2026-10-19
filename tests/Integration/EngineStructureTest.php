@@ -13,6 +13,7 @@ class EngineStructureTest extends TestCase
 {
     /** @var list<string> the classes of the package without the namespace prefix */
     private const DOCUMENTED = [
+        'Data\\Answer',
         'Data\\Builder\\WorkflowConfigBuilder',
         'Data\\NodeResult',
         'Data\\ProcessContext',
@@ -54,7 +55,7 @@ class EngineStructureTest extends TestCase
         sort($documented);
 
         $this->assertSame($documented, $found);
-        $this->assertCount(24, $found);
+        $this->assertCount(25, $found);
         foreach (self::DOCUMENTED as $class) {
             $reflection = new \ReflectionClass('JardisSupport\\Workflow\\' . $class);
             $this->assertSame(

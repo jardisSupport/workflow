@@ -27,6 +27,7 @@ final class ProcessDefinition
     /** @var list<string> */
     private array $requires = [];
     private int $loopLimit = self::DEFAULT_LOOP_LIMIT;
+    private Answer $answer = Answer::LastNode;
     private ?string $currentNode = null;
     /** @var array<string, RuleMode> */
     private array $ruleModes = [];
@@ -94,6 +95,17 @@ final class ProcessDefinition
     {
         $this->assertOpen();
         $this->requires = array_values(array_unique([...$this->requires, ...$requires]));
+
+        return $this;
+    }
+
+    /**
+     * Declares the form of the answer of a successful run; without it the answer is the data of the last step.
+     */
+    public function answer(Answer $answer): self
+    {
+        $this->assertOpen();
+        $this->answer = $answer;
 
         return $this;
     }
@@ -292,6 +304,11 @@ final class ProcessDefinition
     public function getRequires(): array
     {
         return $this->requires;
+    }
+
+    public function getAnswer(): Answer
+    {
+        return $this->answer;
     }
 
     public function getLoopLimit(): int

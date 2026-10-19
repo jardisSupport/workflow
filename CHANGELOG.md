@@ -4,6 +4,22 @@ All notable changes to `jardissupport/workflow` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [SemVer](https://semver.org/). Releases before 2.2.0 are listed in the git history and the GitHub releases.
 
+## [4.0.0] - Unreleased
+
+### BREAKING
+
+- The package is the engine and nothing else (25 classes). The door layers leave `workflow`: input validation, actor check, failure forms, envelope data (`BuildResponseData`), `ReadResult`, `Reference`, `ConfigurationException`, `TransformResponse` and the response objects move to `jardissupport/response`; the transaction bracket and the connection resolution move to `jardissupport/repository`. `CheckRequires` is removed without a successor class.
+- `ProcessRunner::forKernel()` is removed, `ProcessRunner` has no constructor any more (`new ProcessRunner()`).
+- `ProcessRunner::run(…, ?ProcessContext $parent = null)` becomes `run(…, int $depth = 0)`: the depth of the calling run plus one for a sub-process.
+- Failure forms: the engine builds none and answers no 5xx. `ProcessOutcome` loses `cause()` and `declaredMessageKey()`, gains `messageKey()` and `context()`; a reject carries only status, message key, context and errors. Throwables (`ConstructionException`, `UnroutedStatusException`, `LoopLimitExceededException`, a node's own) leave `run()` unchanged.
+- `MapOutcome` is removed: a sub-process node maps the answer of the inner door with `MapResponse` (`__invoke(DomainResponseInterface, ?Route $onReject = null)`), which now also carries the events of the callee.
+- Paths: `Handler/{Failure,Response,Start,Transaction}/*` and `Data/{Failure,Response}/*` are gone; `tests/Smoke` and the wire contract leave the package.
+- `require` shrinks to `php` and `jardissupport/contracts` ^2.12 (`repository`, `scheduling`, `psr/log` are no longer required).
+
+### Added
+
+- `Data\Answer` (`LastNode`, `Merged`) and `ProcessDefinition::answer(Answer)` / `getAnswer()`: `LastNode` (default) answers the data of the last step, `Merged` the data of all executed steps in run order (later wins, objects through `get_object_vars`, a non-empty list throws `ConstructionException`; `null` and `[]` add no field).
+
 ## [3.0.1]
 
 ### Added

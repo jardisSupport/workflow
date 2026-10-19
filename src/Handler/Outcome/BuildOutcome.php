@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace JardisSupport\Workflow\Handler\Outcome;
 
 use JardisSupport\Contract\Kernel\ResponseStatus;
+use JardisSupport\Workflow\Data\Answer;
 use JardisSupport\Workflow\Data\NodeResult;
 use JardisSupport\Workflow\Data\ProcessContext;
 use JardisSupport\Workflow\Data\ProcessDefinition;
@@ -14,10 +15,11 @@ use JardisSupport\Workflow\Exception\ConstructionException;
 /**
  * Builds the final {@see ProcessOutcome} from the finished run.
  *
- * Success: status 200, the data of the last step as response object (a last step without data
- * answers an empty object, nothing is handed on from earlier steps), the events of all steps in
- * execution order. Reject: only the status, the message key, the context and the errors of the
- * rejecting step, an empty response object, no events; the failure form is the door's business.
+ * Success: status 200, the response object in the form the process declared ({@see Answer}): the data of
+ * the last step (a last step without data answers an empty object, nothing is handed on from earlier steps)
+ * or the data of all steps united in run order; the events of all steps in execution order.
+ * Reject: only the status, the message key, the context and the errors of the rejecting step, an empty
+ * response object, no events; the failure form is the door's business.
  * The message key is the one the node declared for that status ({@see ProcessDefinition::rejects()})
  * or, when it declared none, the one the reject carries. A 400 below a declared input property
  * ({@see ProcessDefinition::input()}) answers its field paths below that property.
@@ -25,7 +27,8 @@ use JardisSupport\Workflow\Exception\ConstructionException;
 final class BuildOutcome
 {
     /**
-     * @throws ConstructionException on a run without steps or data that is neither array nor object
+     * @throws ConstructionException on a run without steps, data that is neither array nor object, or a list
+     *                               as step data of a merged answer
      */
     public function __invoke(ProcessContext $context, ?ProcessDefinition $definition = null): ProcessOutcome
     {
@@ -44,7 +47,12 @@ final class BuildOutcome
             );
         }
 
-        return new ProcessOutcome(ResponseStatus::Success, $this->response($last), [], $this->events($context));
+        return new ProcessOutcome(
+            ResponseStatus::Success,
+            $this->response($context, $last, $definition?->getAnswer() ?? Answer::LastNode),
+            [],
+            $this->events($context)
+        );
     }
 
     /**
@@ -90,7 +98,15 @@ final class BuildOutcome
         return $rejectContext;
     }
 
-    private function response(NodeResult $last): object
+    private function response(ProcessContext $context, NodeResult $last, Answer $answer): object
+    {
+        return match ($answer) {
+            Answer::LastNode => $this->lastData($last),
+            Answer::Merged => (object) $this->merged($context),
+        };
+    }
+
+    private function lastData(NodeResult $last): object
     {
         $data = $last->data() ?? [];
         if (!is_array($data) && !is_object($data)) {
@@ -98,6 +114,42 @@ final class BuildOutcome
         }
 
         return (object) $data;
+    }
+
+    /**
+     * The data of all executed steps united in run order, the later step wins on the same field name.
+     *
+     * @return array<array-key, mixed>
+     */
+    private function merged(ProcessContext $context): array
+    {
+        $merged = [];
+        foreach ($context->chain() as $step) {
+            $data = $step['result']->data();
+            if (is_array($data) && $data !== [] && array_is_list($data)) {
+                throw new ConstructionException(
+                    sprintf('A merged answer needs fields by name, step %s answered a list', $step['node'])
+                );
+            }
+            $merged = array_replace($merged, $this->fields($data));
+        }
+
+        return $merged;
+    }
+
+    /**
+     * The fields of one step: none for no data, the array itself, the public properties of an object.
+     *
+     * @return array<array-key, mixed>
+     */
+    private function fields(mixed $data): array
+    {
+        return match (true) {
+            $data === null => [],
+            is_array($data) => $data,
+            is_object($data) => get_object_vars($data),
+            default => throw new ConstructionException('The answer of a run must be an array or an object'),
+        };
     }
 
     /**
