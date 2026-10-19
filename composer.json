@@ -1,7 +1,7 @@
 {
     "name": "jardissupport/workflow",
     "homepage": "https://jardis.io",
-    "description": "Process engine for request-response use cases: declarative node graphs, typed results and failure forms, transaction bracket",
+    "description": "Process engine for request-response use cases: declarative node graphs, typed results, routing, sub-processes",
     "type": "library",
     "license": "MIT",
     "minimum-stability": "stable",
@@ -14,12 +14,10 @@
     ],
     "require": {
         "php": ">=8.3",
-        "jardissupport/contracts": "^2.12",
-        "jardissupport/repository": "^1.6",
-        "jardissupport/scheduling": "^1.2",
-        "psr/log": "^3.0"
+        "jardissupport/contracts": "^2.12"
     },
     "require-dev": {
+        "jardissupport/scheduling": "^1.2",
         "jardissupport/validation": "^1.7.1",
         "phpunit/phpunit": "10.5.63",
         "phpstan/phpstan": "2.1.56",

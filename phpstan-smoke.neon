@@ -1,7 +1,0 @@
-parameters:
-    # Same level as the package (phpstan.neon); the smoke suite is analysed on its own, src/ stays with `make phpstan`
-    level: 8
-
-    paths:
-        - tests/Smoke
-

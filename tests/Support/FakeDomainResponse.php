@@ -8,16 +8,21 @@ use JardisSupport\Contract\Kernel\DomainResponseInterface;
 use JardisSupport\Contract\Kernel\EventScope;
 
 /**
- * Test double of a callee's answer: a status with data and errors, nothing else.
+ * Test double of a callee's answer: a status with data, errors and events, nothing else.
  */
 final readonly class FakeDomainResponse implements DomainResponseInterface
 {
     /**
      * @param array<string, mixed> $data
      * @param array<string, array<int, string>> $errors
+     * @param list<object> $events carried under one context key, as the contract keys events by context
      */
-    public function __construct(private int $status, private array $data = [], private array $errors = [])
-    {
+    public function __construct(
+        private int $status,
+        private array $data = [],
+        private array $errors = [],
+        private array $events = []
+    ) {
     }
 
     public function isSuccess(): bool
@@ -37,7 +42,7 @@ final readonly class FakeDomainResponse implements DomainResponseInterface
 
     public function getEvents(?EventScope $scope = null): array
     {
-        return [];
+        return $this->events === [] ? [] : ['' => $this->events];
     }
 
     public function getErrors(): array

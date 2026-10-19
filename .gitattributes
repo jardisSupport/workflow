@@ -26,18 +26,12 @@ composer.lock text eol=lf merge=union
 
 # Export-ignore (exclude from composer archive)
 /.github export-ignore
-# tests/ is not shipped, except the wire contract (tests/Smoke/Contract): git archive does not descend into an
-# export-ignored directory, so every sibling is listed and the Contract directory is the one left out.
 /tests/bootstrap.php export-ignore
 /tests/Fixture export-ignore
 /tests/Integration export-ignore
 /tests/Support export-ignore
 /tests/Unit export-ignore
 /tests/reports export-ignore
-/tests/Smoke/Fixture export-ignore
-/tests/Smoke/Support export-ignore
-/tests/Smoke/SmokeTest.php export-ignore
-/tests/Smoke/WireContractTest.php export-ignore
 /support export-ignore
 /.claude/CLAUDE.md export-ignore
 /.claude/cache export-ignore

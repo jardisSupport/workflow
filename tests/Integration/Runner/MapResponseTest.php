@@ -5,16 +5,20 @@ declare(strict_types=1);
 namespace JardisSupport\Workflow\Tests\Integration\Runner;
 
 use JardisSupport\Contract\Kernel\ResponseStatus;
+use JardisSupport\Workflow\Data\NodeResult;
+use JardisSupport\Workflow\Data\ProcessContext;
+use JardisSupport\Workflow\Data\ProcessDefinition;
 use JardisSupport\Workflow\Data\Route;
 use JardisSupport\Workflow\Handler\Node\MapResponse;
 use JardisSupport\Workflow\Tests\Support\FakeDomainResponse;
+use JardisSupport\Workflow\Tests\Support\RunnerTestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
-use PHPUnit\Framework\TestCase;
 
 /**
- * MapResponse per status class: 2xx succeeds, 4xx rejects with the callee's plain context, the rest throws (W4).
+ * MapResponse per status class: 2xx succeeds with the callee's data and events, 4xx rejects with the callee's plain
+ * context - or routes on a dev decision -, the rest throws (W4). Also the mapping of a sub-process (the inner door's answer).
  */
-class MapResponseTest extends TestCase
+class MapResponseTest extends RunnerTestCase
 {
     /**
      * @return array<string, array{int}>
@@ -154,5 +158,86 @@ class MapResponseTest extends TestCase
         $this->expectExceptionMessage((string) $status);
 
         (new MapResponse())(new FakeDomainResponse($status, ['messageKey' => 'ignored']));
+    }
+
+    public function testPassesInnerEventsThrough(): void
+    {
+        $first = new \stdClass();
+        $second = new \stdClass();
+
+        $result = (new MapResponse())(new FakeDomainResponse(200, ['id' => 7], [], [$first, $second]));
+
+        $this->assertFalse($result->isRejected());
+        $this->assertSame([$first, $second], $result->events());
+        $this->assertSame(['id' => 7], $result->data());
+    }
+
+    /**
+     * @return array<string, array{int}>
+     */
+    public static function clientErrors(): array
+    {
+        return ['400' => [400], '401' => [401], '403' => [403], '404' => [404], '409' => [409], '422' => [422]];
+    }
+
+    #[DataProvider('clientErrors')]
+    public function testOnRejectRouteCarriesOnInsteadOfRefusing(int $status): void
+    {
+        $result = (new MapResponse())(new FakeDomainResponse($status, ['why' => 'x']), Route::OnFalse);
+
+        $this->assertFalse($result->isRejected());
+        $this->assertSame(Route::OnFalse, $result->takenRoute());
+    }
+
+    #[DataProvider('technicalStatuses')]
+    public function testATechnicalStatusIsNeverRoutedAwayByOnReject(int $status): void
+    {
+        $this->expectException(\RuntimeException::class);
+
+        (new MapResponse())(new FakeDomainResponse($status), Route::OnFalse);
+    }
+
+    /**
+     * @return array<string, array{ResponseStatus, string, array<string, mixed>}>
+     */
+    public static function innerRejects(): array
+    {
+        return [
+            '400' => [ResponseStatus::ValidationError, 'raw.invalid', ['fields' => [['field' => 'qty']]]],
+            '404' => [ResponseStatus::NotFound, 'raw.gone', ['sku' => 'Z-9']],
+            '409' => [ResponseStatus::Conflict, 'raw.conflict', ['reason' => 'stale', 'aggregate' => 'Order', 'violated' => ['uq_no']]],
+            '422' => [ResponseStatus::RuleViolation, 'order.noStock', ['rule' => 'InStock']],
+            '403' => [ResponseStatus::Forbidden, 'raw.forbidden', ['why' => 'owner']],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    #[DataProvider('innerRejects')]
+    public function testInnerRejectBecomesOuterRejectWithTheSameStatus(
+        ResponseStatus $status,
+        string $key,
+        array $context
+    ): void {
+        $runner = $this->runner();
+        $inner = ProcessDefinition::for('In', 'Inner')->node('Inner\\A')->terminal()->build();
+        $outer = ProcessDefinition::for('In', 'Outer')->node('Outer\\A')->terminal()->build();
+        $innerNodes = $this->factory(['Inner\\A' => static fn(ProcessContext $c): NodeResult => NodeResult::reject(
+            $status,
+            $key,
+            $context,
+            ['inner said no']
+        )]);
+
+        $innerOutcome = $runner->run($inner, new \stdClass(), null, $innerNodes);
+        $outerOutcome = $runner->run($outer, new \stdClass(), null, $this->factory([
+            'Outer\\A' => $this->subProcess($runner, $inner, $innerNodes),
+        ]));
+
+        $this->assertSame($status, $innerOutcome->status());
+        $this->assertSame($status, $outerOutcome->status(), 'the outer answer has the status of the inner one');
+        $this->assertSame($innerOutcome->context(), $outerOutcome->context());
+        $this->assertSame(['inner said no'], $outerOutcome->errors());
     }
 }

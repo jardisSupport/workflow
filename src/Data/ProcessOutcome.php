@@ -5,29 +5,29 @@ declare(strict_types=1);
 namespace JardisSupport\Workflow\Data;
 
 use JardisSupport\Contract\Kernel\ResponseStatus;
-use Throwable;
 
 /**
- * Final answer of a process run: status, typed response object, errors, collected events
- * and - for an unexpected failure - the cause. Serialisation happens elsewhere.
+ * Final answer of a process run: status, typed response object, errors and collected events.
+ * Serialisation happens elsewhere, in the door in front of the runner.
  *
- * `declaredMessageKey` is the message key a node named when it rejected the run; the failures of
- * the package's own layers (input, actor, thrown) name none. Only a declared key reaches the
- * wire next to the failure form.
+ * The engine answers a success (200) or the reject of a node (4xx). A reject carries the message key
+ * its node named (`messageKey`) and the plain data of the reject (`context`); the failure form of the
+ * wire is built from them by the door, not here.
  */
 final readonly class ProcessOutcome
 {
     /**
      * @param list<string> $errors
      * @param list<object> $events
+     * @param array<string, mixed> $context
      */
     public function __construct(
         private ResponseStatus $status,
         private object $response,
         private array $errors = [],
         private array $events = [],
-        private ?Throwable $cause = null,
-        private ?string $declaredMessageKey = null,
+        private ?string $messageKey = null,
+        private array $context = [],
     ) {
     }
 
@@ -57,16 +57,23 @@ final readonly class ProcessOutcome
         return $this->events;
     }
 
-    public function cause(): ?Throwable
+    /**
+     * The message key of a reject (the one the node declared for the status, else the one the reject
+     * carries); null for a success.
+     */
+    public function messageKey(): ?string
     {
-        return $this->cause;
+        return $this->messageKey;
     }
 
     /**
-     * The message key the rejecting node named; null for a success and for a failure of the package's own layers.
+     * The plain data of a reject (a 400 below a declared input property carries its prefixed field paths);
+     * empty for a success.
+     *
+     * @return array<string, mixed>
      */
-    public function declaredMessageKey(): ?string
+    public function context(): array
     {
-        return $this->declaredMessageKey;
+        return $this->context;
     }
 }

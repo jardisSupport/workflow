@@ -10,25 +10,20 @@ use JardisSupport\Workflow\Data\ProcessContext;
 use JardisSupport\Workflow\Data\ProcessDefinition;
 use JardisSupport\Workflow\Data\ProcessOutcome;
 use JardisSupport\Workflow\Exception\ConstructionException;
-use JardisSupport\Workflow\Handler\Failure\BuildFailureOutcome;
 
 /**
  * Builds the final {@see ProcessOutcome} from the finished run.
  *
  * Success: status 200, the data of the last step as response object (a last step without data
  * answers an empty object, nothing is handed on from earlier steps), the events of all steps in
- * execution order. Reject: the failure answer of the rejecting step ({@see BuildFailureOutcome}),
- * no events; its message key is the one the node declared for that status
- * ({@see ProcessDefinition::rejects()}) or, when it declared none, the one the reject carries.
- * A 400 below a declared input property ({@see ProcessDefinition::input()}) answers its field
- * paths below that property.
+ * execution order. Reject: only the status, the message key, the context and the errors of the
+ * rejecting step, an empty response object, no events; the failure form is the door's business.
+ * The message key is the one the node declared for that status ({@see ProcessDefinition::rejects()})
+ * or, when it declared none, the one the reject carries. A 400 below a declared input property
+ * ({@see ProcessDefinition::input()}) answers its field paths below that property.
  */
 final class BuildOutcome
 {
-    public function __construct(private readonly BuildFailureOutcome $buildFailureOutcome = new BuildFailureOutcome())
-    {
-    }
-
     /**
      * @throws ConstructionException on a run without steps or data that is neither array nor object
      */
@@ -39,13 +34,13 @@ final class BuildOutcome
         if ($last->isRejected() && $status !== null) {
             $node = $this->lastNode($context);
 
-            return ($this->buildFailureOutcome)(
+            return new ProcessOutcome(
                 $status,
-                $this->declaredKey($definition, $node, $status) ?? (string) $last->messageKey(),
-                $this->prefixed($status, $last->context(), $definition?->getInput($node)),
+                new \stdClass(),
                 $last->errors(),
-                null,
-                true
+                [],
+                $this->declaredKey($definition, $node, $status) ?? (string) $last->messageKey(),
+                $this->prefixed($status, $last->context(), $definition?->getInput($node))
             );
         }
 
