@@ -19,9 +19,6 @@ phpstan: ## Run PHPStan analysis
 	$(DOCKER_COMPOSE) run --rm --no-deps phpcli vendor/bin/phpstan analyse /app/src -c phpstan.neon
 .PHONY: phpstan
 
-phpstan-smoke: ## Run PHPStan analysis over the smoke suite (generat copies)
-	$(DOCKER_COMPOSE) run --rm --no-deps phpcli vendor/bin/phpstan analyse /app/tests/Smoke -c phpstan-smoke.neon
-.PHONY: phpstan-smoke
 
 phpcs: ## Run coding standards
 	$(DOCKER_COMPOSE) run --rm --no-deps phpcli vendor/bin/phpcs /app/src

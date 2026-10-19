@@ -8,12 +8,11 @@ use JardisSupport\Workflow\ProcessRunner;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
 use ReflectionMethod;
-use ReflectionNamedType;
 
 /**
  * Structure proofs on the real sources: the runner is pure composition (W1, A-V1), every handler
- * has one entry point (A-V2), the runner depends on interfaces only (A-V5) and the package holds
- * no persistence of its own, no suspension and no event sending (A-B1, A-N2).
+ * has one entry point (A-V2) and the package holds no persistence of its own, no suspension and no
+ * event sending (A-B1, A-N2). The runner without a constructor: ProcessRunnerStructureTest.
  */
 class RunnerStructureTest extends TestCase
 {
@@ -101,32 +100,9 @@ class RunnerStructureTest extends TestCase
         }
     }
 
-    public function testRunnerConstructorTakesInterfacesOnly(): void
-    {
-        $parameters = (new ReflectionClass(ProcessRunner::class))->getConstructor()?->getParameters() ?? [];
-
-        // connection, validator and the optional logger (2.2)
-        $this->assertCount(3, $parameters);
-        $this->assertTrue($parameters[2]->isOptional(), 'the logger is additive');
-        foreach ($parameters as $parameter) {
-            $type = $parameter->getType();
-            $this->assertInstanceOf(ReflectionNamedType::class, $type);
-            $this->assertTrue(interface_exists($type->getName()), $parameter->getName());
-        }
-    }
-
     public function testPackageHoldsNoPersistenceNoSuspensionAndSendsNoEvents(): void
     {
-        // ResolveConnection is the one place that names PDO / pool: it only picks the kernel's writer
-        // (pool -> getWriter, PDO -> repository's PdoConnection); there is no persistence of its own.
-        $this->assertSame(
-            [self::root() . '/src/Handler/Start/ResolveConnection.php'],
-            array_values(array_unique(array_map(
-                static fn(string $hit): string => substr($hit, 0, (int) strrpos($hit, ':')),
-                $this->grep('/new ObjectValidator|PDO|ConnectionPool/')
-            ))),
-            'no own persistence'
-        );
+        $this->assertSame([], $this->grep('/new ObjectValidator|PDO|ConnectionPool/'), 'no own persistence');
         $this->assertSame([], $this->grep('/resume|suspend|persistState|wait/i'), 'no suspension');
         $this->assertSame([], $this->grep('/publish|dispatch/'), 'events are never sent here');
     }

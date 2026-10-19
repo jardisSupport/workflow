@@ -16,7 +16,7 @@ use JardisSupport\Workflow\Handler\Routing\Workflow;
 /**
  * The core of a run: start context, then the engine over the node chain, then the outcome.
  *
- * Runs inside the cross-cutting layers the runner puts around it (input, actor, transaction).
+ * Nothing wraps it: what a node throws leaves the runner unchanged.
  */
 final class ExecuteProcess
 {

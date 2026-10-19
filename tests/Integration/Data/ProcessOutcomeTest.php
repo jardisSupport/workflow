@@ -5,13 +5,12 @@ declare(strict_types=1);
 namespace JardisSupport\Workflow\Tests\Integration\Data;
 
 use JardisSupport\Contract\Kernel\ResponseStatus;
-use JardisSupport\Workflow\Data\Failure\NotFound;
 use JardisSupport\Workflow\Data\ProcessOutcome;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
 
 /**
- * ProcessOutcome: success, reject and thrown-failure shapes.
+ * ProcessOutcome: the success shape and the reject shape of the engine.
  */
 class ProcessOutcomeTest extends TestCase
 {
@@ -34,29 +33,39 @@ class ProcessOutcomeTest extends TestCase
         $this->assertSame($response, $outcome->response());
         $this->assertSame([], $outcome->errors());
         $this->assertSame([$event], $outcome->events());
-        $this->assertNull($outcome->cause());
+        $this->assertNull($outcome->messageKey());
+        $this->assertSame([], $outcome->context());
     }
 
-    public function testRejectCarriesFailureFormAndErrorsWithoutEvents(): void
+    public function testRejectCarriesMessageKeyContextAndErrorsWithoutEvents(): void
     {
-        $failure = new NotFound('order.notFound');
-
-        $outcome = new ProcessOutcome(ResponseStatus::NotFound, $failure, ['no such order']);
+        $outcome = new ProcessOutcome(
+            ResponseStatus::NotFound,
+            new \stdClass(),
+            ['no such order'],
+            [],
+            'order.notFound',
+            ['orderNumber' => 'ORD-404']
+        );
 
         $this->assertSame(ResponseStatus::NotFound, $outcome->status());
-        $this->assertSame($failure, $outcome->response());
         $this->assertSame(['no such order'], $outcome->errors());
         $this->assertSame([], $outcome->events());
-        $this->assertNull($outcome->cause());
+        $this->assertSame('order.notFound', $outcome->messageKey());
+        $this->assertSame(['orderNumber' => 'ORD-404'], $outcome->context());
     }
 
-    public function testThrowCarriesTheCause(): void
+    public function testOutcomeHasNeitherCauseNorDeclaredMessageKey(): void
     {
-        $cause = new \RuntimeException('boom');
+        $methods = array_map(
+            static fn(\ReflectionMethod $method): string => $method->getName(),
+            (new ReflectionClass(ProcessOutcome::class))->getMethods(\ReflectionMethod::IS_PUBLIC)
+        );
+        sort($methods);
 
-        $outcome = new ProcessOutcome(ResponseStatus::InternalError, new \stdClass(), [], [], $cause);
-
-        $this->assertSame(ResponseStatus::InternalError, $outcome->status());
-        $this->assertSame($cause, $outcome->cause());
+        $this->assertSame(
+            ['__construct', 'context', 'errors', 'events', 'messageKey', 'response', 'status'],
+            $methods
+        );
     }
 }

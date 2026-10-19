@@ -88,31 +88,29 @@ class RunnerChainTest extends RunnerTestCase
             ->node(ReserveStock::class)->response(ReserveStockResponse::class, 'reservationId')->terminal()
             ->build();
 
-        $outcome = $this->runner()->run(
+        $this->expectException(ConstructionException::class);
+        $this->expectExceptionMessageMatches('/quantity/');
+
+        $this->runner()->run(
             $definition,
             new \stdClass(),
             null,
             $this->factory([ReserveStock::class => new ReserveStock()])
         );
-
-        $this->assertSame(ResponseStatus::InternalError, $outcome->status());
-        $this->assertInstanceOf(ConstructionException::class, $outcome->cause());
-        $this->assertStringContainsString('quantity', $outcome->cause()->getMessage());
     }
 
     public function testDeclaredResponseClassThatDoesNotExistIsAConstructionException(): void
     {
         $definition = ProcessDefinition::for('In', 'P')->node(self::A)->response('Missing\\NoSuchResponse', 'x')->terminal()->build();
 
-        $outcome = $this->runner()->run(
+        $this->expectException(ConstructionException::class);
+
+        $this->runner()->run(
             $definition,
             new \stdClass(),
             null,
             $this->factory([self::A => static fn(ProcessContext $c): NodeResult => NodeResult::ok(['x' => 1])])
         );
-
-        $this->assertSame(ResponseStatus::InternalError, $outcome->status());
-        $this->assertInstanceOf(ConstructionException::class, $outcome->cause());
     }
 
     public function testObjectDataIsNotHydratedAgain(): void
@@ -140,17 +138,17 @@ class RunnerChainTest extends RunnerTestCase
         $built = [];
         $ok = static fn(ProcessContext $c): NodeResult => NodeResult::ok(['n' => 1]);
 
-        $outcome = $this->runner()->run(
-            $definition,
-            new \stdClass(),
-            null,
-            $this->factory([self::A => $ok, self::B => $ok], $built)
-        );
-
-        $this->assertSame(ResponseStatus::InternalError, $outcome->status());
-        $cause = $outcome->cause();
-        $this->assertInstanceOf(LoopLimitExceededException::class, $cause);
-        $this->assertSame(2, $cause->getLimit());
+        try {
+            $this->runner()->run(
+                $definition,
+                new \stdClass(),
+                null,
+                $this->factory([self::A => $ok, self::B => $ok], $built)
+            );
+            $this->fail('the loop limit must stop the run');
+        } catch (LoopLimitExceededException $e) {
+            $this->assertSame(2, $e->getLimit());
+        }
 
         $this->assertSame([self::A, self::B], $built, 'the third node is never asked for');
     }
@@ -169,22 +167,21 @@ class RunnerChainTest extends RunnerTestCase
 
                 return NodeResult::ok([]);
             },
-        ]), new ProcessContext(new \stdClass(), null, 1));
+        ]), 2);
 
         $this->assertInstanceOf(CheckoutContext::class, $seen);
         $this->assertSame($input, $seen->input());
         $this->assertSame($actor, $seen->actor());
-        $this->assertSame('checkout:2', $seen->marker(), 'depth is the parent depth plus one');
+        $this->assertSame('checkout:2', $seen->marker(), 'the depth of the run reaches the context class');
     }
 
     public function testContextClassNotExtendingTheBaseIsRejected(): void
     {
         $definition = ProcessDefinition::for('In', 'P')->context(\stdClass::class)->node(self::A)->terminal()->build();
 
-        $outcome = $this->runner()->run($definition, new \stdClass(), null, $this->factory([]));
+        $this->expectException(ConstructionException::class);
 
-        $this->assertSame(ResponseStatus::InternalError, $outcome->status());
-        $this->assertInstanceOf(ConstructionException::class, $outcome->cause());
+        $this->runner()->run($definition, new \stdClass(), null, $this->factory([]));
     }
 
     public function testOutermostRunHasDepthZero(): void

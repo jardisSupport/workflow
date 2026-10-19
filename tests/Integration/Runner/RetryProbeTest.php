@@ -75,17 +75,18 @@ class RetryProbeTest extends RunnerTestCase
     {
         $built = [];
 
-        $outcome = $this->runner()->run(
-            $this->load('RetryProbeUntilHealthy'),
-            new \stdClass(),
-            null,
-            $this->factory($this->nodes(PHP_INT_MAX), $built)
-        );
+        try {
+            $this->runner()->run(
+                $this->load('RetryProbeUntilHealthy'),
+                new \stdClass(),
+                null,
+                $this->factory($this->nodes(PHP_INT_MAX), $built)
+            );
+            $this->fail('the endless variant must end at the loop limit');
+        } catch (LoopLimitExceededException $e) {
+            $this->assertSame(ProcessDefinition::DEFAULT_LOOP_LIMIT, $e->getLimit());
+        }
 
-        $this->assertSame(ResponseStatus::InternalError, $outcome->status());
-        $cause = $outcome->cause();
-        $this->assertInstanceOf(LoopLimitExceededException::class, $cause);
-        $this->assertSame(ProcessDefinition::DEFAULT_LOOP_LIMIT, $cause->getLimit());
         $this->assertCount(ProcessDefinition::DEFAULT_LOOP_LIMIT, $built);
     }
 

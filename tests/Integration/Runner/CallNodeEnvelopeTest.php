@@ -8,105 +8,120 @@ use JardisSupport\Contract\Kernel\ResponseStatus;
 use JardisSupport\Workflow\Data\NodeResult;
 use JardisSupport\Workflow\Data\ProcessContext;
 use JardisSupport\Workflow\Data\ProcessDefinition;
+use JardisSupport\Workflow\Data\ProcessOutcome;
 use JardisSupport\Workflow\Handler\Node\MapResponse;
-use JardisSupport\Workflow\Handler\Response\BuildResponseData;
-use JardisSupport\Workflow\Tests\Support\EnvelopeJson;
 use JardisSupport\Workflow\Tests\Support\FakeDomainResponse;
 use JardisSupport\Workflow\Tests\Support\RunnerTestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
 
 /**
- * A 4xx passed through a call node reaches the process door in the form of the recorded envelope
- * (`tests/Fixture/envelope`), with the message key the node declared for that status - the
- * callee answers its form, the process answers the same form again, no form inside a form.
+ * A 4xx passed through a call node reaches the outcome of the run as plain data: the status, the message
+ * key the node declared for that status (else the one the callee's form carries), the callee's context
+ * unpacked from its form (`tests/Fixture/envelope` holds the forms as recorded). The wire form built
+ * from it is the door's business (`jardissupport/response`).
  */
 class CallNodeEnvelopeTest extends RunnerTestCase
 {
     private const CALL = 'Node\\Call';
 
     /**
-     * @return array<string, array{string, ResponseStatus}>
+     * Per form: fixture, status, the key the callee's form carries, the context the outcome carries.
+     *
+     * @return array<string, array{string, ResponseStatus, string, array<string, mixed>}>
      */
     public static function forms(): array
     {
         return [
-            '400 validation' => ['validation', ResponseStatus::ValidationError],
-            '404 notFound' => ['notFound', ResponseStatus::NotFound],
-            '409 concurrencyConflict' => ['conflict', ResponseStatus::Conflict],
-            '422 ruleViolation' => ['ruleViolation', ResponseStatus::RuleViolation],
+            '400 validation' => ['validation', ResponseStatus::ValidationError, '', ['fields' => [
+                ['field' => 'email', 'reason' => 'missing', 'message' => 'Required', 'messageKey' => 'order.email.missing'],
+                ['field' => 'items[1].qty', 'reason' => 'min', 'message' => 'Must be at least 1', 'messageKey' => 'order.qty.min'],
+            ]]],
+            '404 notFound' => ['notFound', ResponseStatus::NotFound, '', ['orderNumber' => 'ORD-404']],
+            '409 concurrencyConflict' => ['conflict', ResponseStatus::Conflict, '', [
+                'reason' => 'stale',
+                'aggregate' => 'order',
+                'violated' => ['uq_order_number'],
+                'orderNumber' => 'ORD-2026-0001',
+                'expectedVersion' => 3,
+            ]],
+            '422 ruleViolation' => ['ruleViolation', ResponseStatus::RuleViolation, 'order.rule.open', ['rule' => 'OrderMustBeOpen']],
         ];
     }
 
+    /**
+     * @param array<string, mixed> $context
+     */
     #[DataProvider('forms')]
-    public function testPassedThroughFormIsByteIdenticalToTheRecordedData(string $fixture, ResponseStatus $status): void
-    {
-        $recorded = $this->recordedData($fixture);
+    public function testPassedThroughFormReachesTheOutcomeAsPlainContext(
+        string $fixture,
+        ResponseStatus $status,
+        string $ownKey,
+        array $context
+    ): void {
+        $outcome = $this->answer($status, $this->recordedData($fixture), false);
 
-        $data = $this->answer($status, $recorded, false);
-
-        $this->assertSame(EnvelopeJson::encode($recorded), EnvelopeJson::encode($data));
+        $this->assertSame($status, $outcome->status());
+        $this->assertSame($ownKey, $outcome->messageKey());
+        $this->assertSame($context, $outcome->context());
+        $this->assertEquals(new \stdClass(), $outcome->response(), 'the engine builds no failure form');
     }
 
+    /**
+     * @param array<string, mixed> $context
+     */
     #[DataProvider('forms')]
-    public function testDeclaredKeyJoinsTheRecordedDataAsTheLastMember(string $fixture, ResponseStatus $status): void
-    {
-        $recorded = $this->recordedData($fixture);
-        $expected = $recorded;
-        $expected['messageKey'] = 'registry.declared';
+    public function testDeclaredKeyBeatsTheKeyOfTheCallee(
+        string $fixture,
+        ResponseStatus $status,
+        string $ownKey,
+        array $context
+    ): void {
+        $outcome = $this->answer($status, $this->recordedData($fixture), true);
 
-        $data = $this->answer($status, $recorded, true);
-
-        $this->assertSame(EnvelopeJson::encode($expected), EnvelopeJson::encode($data));
+        $this->assertSame('registry.declared', $outcome->messageKey());
+        $this->assertSame($context, $outcome->context(), 'the declaration changes the key only');
     }
 
-    public function testCalleeKeyOfAFormWithoutOneDoesNotReachTheAnswer(): void
+    public function testCalleeKeyOfAFormWithoutOneDoesNotReachTheOutcome(): void
     {
-        $recorded = $this->recordedData('notFound');
-        $callee = $recorded + ['messageKey' => 'callee.key'];
+        $callee = $this->recordedData('notFound') + ['messageKey' => 'callee.key'];
 
-        $data = $this->answer(ResponseStatus::NotFound, $callee, false);
+        $outcome = $this->answer(ResponseStatus::NotFound, $callee, false);
 
-        $this->assertSame($recorded, $data);
-    }
-
-    public function testDeclaredKeyOverridesTheKeyOfTheCalleesRuleViolationInPlace(): void
-    {
-        $recorded = $this->recordedData('ruleViolation');
-
-        $data = $this->answer(ResponseStatus::RuleViolation, $recorded, true);
-
-        $this->assertSame(['@type', 'rule', 'messageKey', 'context'], array_keys($data));
-        $this->assertSame('registry.declared', $data['messageKey']);
+        $this->assertSame('', $outcome->messageKey());
+        $this->assertSame(['orderNumber' => 'ORD-404'], $outcome->context());
     }
 
     public function testDeclarationForAnotherStatusLeavesTheCalleesKeyAlone(): void
     {
-        $recorded = $this->recordedData('ruleViolation');
+        $outcome = $this->answer(
+            ResponseStatus::RuleViolation,
+            $this->recordedData('ruleViolation'),
+            true,
+            ResponseStatus::NotFound
+        );
 
-        $data = $this->answer(ResponseStatus::RuleViolation, $recorded, true, ResponseStatus::NotFound);
-
-        $this->assertEquals($recorded, $data);
+        $this->assertSame('order.rule.open', $outcome->messageKey());
     }
 
-    public function testOtherClientErrorPassesTheCalleesDataThroughUnchanged(): void
+    public function testOtherClientErrorPassesTheCalleesDataThroughAsContext(): void
     {
         $callee = ['anything' => 'stays', 'messageKey' => 'auth.denied', 'scope' => 'orders'];
 
-        $data = $this->answer(ResponseStatus::Forbidden, $callee, false);
+        $outcome = $this->answer(ResponseStatus::Forbidden, $callee, false);
 
-        $this->assertSame(EnvelopeJson::encode($callee), EnvelopeJson::encode($data));
+        $this->assertSame($callee, $outcome->context(), 'a key in the data stays where it is');
+        $this->assertSame('', $outcome->messageKey());
     }
 
-    public function testOtherClientErrorTakesTheDeclaredKeyInPlaceOrLast(): void
+    public function testOtherClientErrorTakesTheDeclaredKeyAndKeepsItsContext(): void
     {
-        $withKey = ['messageKey' => 'auth.denied', 'scope' => 'orders'];
-        $withoutKey = ['scope' => 'orders'];
+        $callee = ['messageKey' => 'auth.denied', 'scope' => 'orders'];
 
-        $replaced = $this->answer(ResponseStatus::Unauthorized, $withKey, true);
-        $appended = $this->answer(ResponseStatus::Unauthorized, $withoutKey, true);
+        $outcome = $this->answer(ResponseStatus::Unauthorized, $callee, true);
 
-        $this->assertSame('{"messageKey":"registry.declared","scope":"orders"}', json_encode($replaced));
-        $this->assertSame('{"scope":"orders","messageKey":"registry.declared"}', json_encode($appended));
+        $this->assertSame('registry.declared', $outcome->messageKey());
+        $this->assertSame($callee, $outcome->context());
     }
 
     public function testNodeThatRejects401AnswersOnlyTheDeclaredKey(): void
@@ -126,10 +141,8 @@ class CallNodeEnvelopeTest extends RunnerTestCase
 
         $this->assertSame(ResponseStatus::Unauthorized, $outcome->status());
         $this->assertSame(['Invalid credentials'], $outcome->errors());
-        $this->assertSame(
-            '{"messageKey":"access.invalidCredentials"}',
-            json_encode((new BuildResponseData())($outcome, 'P'))
-        );
+        $this->assertSame('access.invalidCredentials', $outcome->messageKey());
+        $this->assertSame([], $outcome->context());
     }
 
     public function testNodeThatRejects403WithoutADeclarationAnswersItsPayloadAndItsKey(): void
@@ -144,14 +157,12 @@ class CallNodeEnvelopeTest extends RunnerTestCase
             ),
         ]));
 
-        $this->assertSame(
-            '{"anything":"stays","messageKey":"systemHealth.shift_forbidden"}',
-            json_encode((new BuildResponseData())($outcome, 'P'))
-        );
+        $this->assertSame('systemHealth.shift_forbidden', $outcome->messageKey());
+        $this->assertSame(['anything' => 'stays'], $outcome->context());
     }
 
     /**
-     * The recorded `data` as the callee answers it and the process encodes it: an empty context is an object.
+     * The recorded `data` as the callee answers it: an empty context arrives as an object.
      *
      * @return array<string, mixed>
      */
@@ -169,18 +180,16 @@ class CallNodeEnvelopeTest extends RunnerTestCase
     }
 
     /**
-     * Runs a one-node process whose node calls an operation answering $calleeData, and returns the
-     * `data` of the process envelope.
+     * Runs a one-node process whose node calls an operation answering $calleeData.
      *
      * @param array<string, mixed> $calleeData
-     * @return array<string, mixed>
      */
     private function answer(
         ResponseStatus $status,
         array $calleeData,
         bool $declare,
         ?ResponseStatus $declaredFor = null
-    ): array {
+    ): ProcessOutcome {
         $definition = ProcessDefinition::for('In', 'P')->node(self::CALL);
         if ($declare) {
             $definition->rejects($declaredFor ?? $status, 'registry.declared');
@@ -195,6 +204,6 @@ class CallNodeEnvelopeTest extends RunnerTestCase
 
         $this->assertSame($status, $outcome->status());
 
-        return (new BuildResponseData())($outcome, 'P');
+        return $outcome;
     }
 }
