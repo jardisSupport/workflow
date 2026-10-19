@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace JardisSupport\Workflow\Handler\Node;
 
 use JardisSupport\Contract\Kernel\DomainResponseInterface;
+use JardisSupport\Contract\Kernel\EventScope;
 use JardisSupport\Contract\Kernel\ResponseStatus;
 use JardisSupport\Workflow\Data\NodeResult;
 use JardisSupport\Workflow\Data\Route;
@@ -14,8 +15,9 @@ use JardisSupport\Workflow\Exception\CalleeFailureException;
  * Maps the answer of a called domain operation - an aggregate command, or the inner door of a sub-process -
  * to a node result.
  *
- * 2xx becomes a success carrying the data and the events of the callee, so they travel up to the answer of
- * the run. 4xx becomes a reject with the SAME status whose context is the plain context of the callee: the
+ * 2xx becomes a success carrying the data and the Domain events of the callee, so they travel up to the answer of
+ * the run. Internal events stay behind: they are the write gesture of the callee's aggregate, not part of its answer.
+ * 4xx becomes a reject with the SAME status whose context is the plain context of the callee: the
  * form of the callee's data is unpacked (`@type` dropped, the inner `context` lifted, the form's own fields -
  * 400 `fields`, 409 `reason`/`aggregate`/`violated`, 422 `rule` - kept under their own keys), so the process
  * answers the same form again. With `$onReject` a 4xx becomes a route instead: the dev decision to carry on
@@ -39,7 +41,9 @@ final class MapResponse
         $data = $response->getData();
         $reject = ResponseStatus::tryFrom($status);
         if ($status >= 200 && $status < 300) {
-            return NodeResult::ok($data)->withEvents(...array_merge([], ...array_values($response->getEvents())));
+            return NodeResult::ok($data)->withEvents(
+                ...array_merge([], ...array_values($response->getEvents(EventScope::Domain)))
+            );
         }
         if ($status >= 500 && $status < 600) {
             throw new CalleeFailureException(sprintf('Operation answered with status %d', $status));

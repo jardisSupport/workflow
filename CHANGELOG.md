@@ -12,7 +12,7 @@ versioning follows [SemVer](https://semver.org/). Releases before 2.2.0 are list
 - `ProcessRunner::forKernel()` is removed, `ProcessRunner` has no constructor any more (`new ProcessRunner()`).
 - `ProcessRunner::run(…, ?ProcessContext $parent = null)` becomes `run(…, int $depth = 0)`: the depth of the calling run plus one for a sub-process.
 - Failure forms: the engine builds none and answers no 5xx. `ProcessOutcome` loses `cause()` and `declaredMessageKey()`, gains `messageKey()` and `context()`; a reject carries only status, message key, context and errors. Throwables (`ConstructionException`, `UnroutedStatusException`, `LoopLimitExceededException`, a node's own) leave `run()` unchanged.
-- `MapOutcome` is removed: a sub-process node maps the answer of the inner door with `MapResponse` (`__invoke(DomainResponseInterface, ?Route $onReject = null)`), which now also carries the events of the callee.
+- `MapOutcome` is removed: a sub-process node maps the answer of the inner door with `MapResponse` (`__invoke(DomainResponseInterface, ?Route $onReject = null)`), which now also carries the Domain events of the callee (Internal events stay behind: they are the write gesture of the callee's aggregate).
 - Paths: `Handler/{Failure,Response,Start,Transaction}/*` and `Data/{Failure,Response}/*` are gone; `tests/Smoke` and the wire contract leave the package.
 - `require` shrinks to `php` and `jardissupport/contracts` ^2.13 (`repository`, `scheduling`, `psr/log` are no longer required).
 

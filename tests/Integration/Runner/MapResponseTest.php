@@ -201,6 +201,20 @@ class MapResponseTest extends RunnerTestCase
     }
 
     /**
+     * Internal events are the write gesture of the callee's aggregate (Wurzel 3), not part of its answer: only the
+     * Domain events travel up, so the envelope of a process shows the events of the command, not its internals.
+     */
+    public function testInternalEventsAreNotPassedThroughButDomainEventsAre(): void
+    {
+        $domain = new \stdClass();
+        $internal = new \stdClass();
+
+        $result = (new MapResponse())(new FakeDomainResponse(200, ['id' => 7], [], [$domain], [$internal]));
+
+        $this->assertSame([$domain], $result->events());
+    }
+
+    /**
      * @return array<string, array{int}>
      */
     public static function clientErrors(): array
