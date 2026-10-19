@@ -4,9 +4,6 @@ declare(strict_types=1);
 
 namespace JardisSupport\Workflow;
 
-use JardisSupport\Contract\DbConnection\DbConnectionInterface;
-use JardisSupport\Contract\Kernel\DomainKernelInterface;
-use JardisSupport\Contract\Validation\ValidatorInterface;
 use JardisSupport\Workflow\Data\NodeResult;
 use JardisSupport\Workflow\Data\ProcessContext;
 use JardisSupport\Workflow\Data\ProcessDefinition;
@@ -15,49 +12,44 @@ use JardisSupport\Workflow\Data\RunRequest;
 use JardisSupport\Workflow\Handler\Context\CreateContext;
 use JardisSupport\Workflow\Handler\Context\HydrateResponse;
 use JardisSupport\Workflow\Handler\Events\CollectEvents;
-use JardisSupport\Workflow\Handler\Failure\BuildFailureForm;
-use JardisSupport\Workflow\Handler\Failure\BuildFailureOutcome;
-use JardisSupport\Workflow\Handler\Failure\LogCause;
-use JardisSupport\Workflow\Handler\Failure\MapThrowable;
 use JardisSupport\Workflow\Handler\Loop\GuardLoop;
 use JardisSupport\Workflow\Handler\Node\ApplyRuleMode;
 use JardisSupport\Workflow\Handler\Node\ResolveNode;
 use JardisSupport\Workflow\Handler\Outcome\BuildOutcome;
 use JardisSupport\Workflow\Handler\Outcome\ExecuteProcess;
 use JardisSupport\Workflow\Handler\Routing\Workflow;
-use JardisSupport\Workflow\Handler\Start\CheckActor;
-use JardisSupport\Workflow\Handler\Start\ResolveConnection;
-use JardisSupport\Workflow\Handler\Start\ValidateInput;
-use JardisSupport\Workflow\Handler\Transaction\Bracket;
-use Psr\Log\LoggerInterface;
 
 /**
  * Runs a process definition and answers with a {@see ProcessOutcome}.
  *
- * Pure composition, no logic of its own. Each node is wrapped, outside in, by GuardLoop,
- * CollectEvents, HydrateResponse and ApplyRuleMode; the engine walks the graph over that chain and
- * BuildOutcome turns the finished run into the answer. Nothing is handed on between nodes: the
- * answer is what the last node returned, a later node reads earlier data explicitly through
- * {@see ProcessContext::latest()} / {@see ProcessContext::all()}. The run itself sits in
- * layers, outside in: LogCause, MapThrowable, ValidateInput, CheckActor, Bracket, then the core.
+ * The engine and nothing around it: each node is wrapped, outside in, by GuardLoop, CollectEvents,
+ * HydrateResponse and ApplyRuleMode; the engine walks the graph over that chain and BuildOutcome
+ * turns the finished run into the answer. Nothing is handed on between nodes: the answer is what
+ * the last node returned, a later node reads earlier data explicitly through
+ * {@see ProcessContext::latest()} / {@see ProcessContext::all()}.
  *
- * The connection is optional: a process that opted out of the transaction runs without one, a
- * transactional process without one ends with 500 (see {@see Bracket}). {@see self::forKernel()}
- * takes the writer and the logger from the kernel. A given logger receives the cause of every
- * failed run once (see {@see LogCause}); without one nothing is logged.
+ * The runner checks no input, resolves no actor, opens no transaction and logs nothing: that is the
+ * business of the door in front of it. What a node throws runs through unchanged; the engine
+ * answers a finished run only (200, or a 4xx a node rejected with).
  */
 final class ProcessRunner
 {
-    /** @var \Closure(RunRequest): ProcessOutcome */
-    private \Closure $execution;
+    /**
+     * @param \Closure(class-string): object $nodeFactory builds the node object; the package checks it is callable
+     * @param int $depth nesting depth of this run: 0 at the outermost level, else the depth of the calling run plus one
+     */
+    public function run(
+        ProcessDefinition $definition,
+        object $input,
+        ?object $actor,
+        \Closure $nodeFactory,
+        int $depth = 0
+    ): ProcessOutcome {
+        return $this->core()(RunRequest::of($definition, $input, $actor, $nodeFactory, $depth));
+    }
 
-    public function __construct(
-        ?DbConnectionInterface $connection,
-        ValidatorInterface $validator,
-        ?LoggerInterface $logger = null
-    ) {
-        $buildFailureForm = new BuildFailureForm();
-        $buildFailureOutcome = new BuildFailureOutcome($buildFailureForm);
+    private function core(): ExecuteProcess
+    {
         $chain = array_reduce(
             array_reverse([
                 new GuardLoop(),
@@ -79,50 +71,7 @@ final class ProcessRunner
             static fn(ProcessDefinition $definition, string $node, ProcessContext $context, \Closure $call): NodeResult
                 => $call($context)
         );
-        $core = new ExecuteProcess(
-            new CreateContext(),
-            new Workflow(),
-            $chain,
-            new BuildOutcome($buildFailureOutcome),
-            new ResolveNode()
-        );
 
-        $this->execution = array_reduce(
-            array_reverse([
-                new LogCause($logger),
-                new MapThrowable($buildFailureOutcome),
-                new ValidateInput($validator, $buildFailureOutcome),
-                new CheckActor($buildFailureOutcome),
-                new Bracket($connection),
-            ]),
-            static fn(\Closure $inner, callable $layer): \Closure => static fn(
-                RunRequest $request
-            ): ProcessOutcome => $layer($request, $inner),
-            $core(...)
-        );
-    }
-
-    /**
-     * The runner of a kernel: the writer connection comes from the kernel's `dbConnection()`
-     * (a pool, a raw driver handle or none), see {@see ResolveConnection}; the logger comes from the
-     * kernel's `logger()` (may be none).
-     */
-    public static function forKernel(DomainKernelInterface $kernel, ValidatorInterface $validator): self
-    {
-        return new self((new ResolveConnection())($kernel), $validator, $kernel->logger());
-    }
-
-    /**
-     * @param \Closure(class-string): object $nodeFactory builds the node object; the package checks it is callable
-     * @param ProcessContext|null $parent the surrounding run when this one is a sub-process
-     */
-    public function run(
-        ProcessDefinition $definition,
-        object $input,
-        ?object $actor,
-        \Closure $nodeFactory,
-        ?ProcessContext $parent = null
-    ): ProcessOutcome {
-        return ($this->execution)(RunRequest::of($definition, $input, $actor, $nodeFactory, $parent));
+        return new ExecuteProcess(new CreateContext(), new Workflow(), $chain, new BuildOutcome(), new ResolveNode());
     }
 }

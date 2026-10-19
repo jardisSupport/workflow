@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace JardisSupport\Workflow\Tests\Integration\Runner;
 
 use JardisSupport\Contract\Kernel\ResponseStatus;
-use JardisSupport\Workflow\Data\Failure\Conflict;
 use JardisSupport\Workflow\Data\NodeResult;
 use JardisSupport\Workflow\Data\ProcessContext;
 use JardisSupport\Workflow\Data\ProcessDefinition;
@@ -64,7 +63,9 @@ class EventsAndAnswerTest extends RunnerTestCase
         $this->assertSame(ResponseStatus::Conflict, $outcome->status());
         $this->assertSame([], $outcome->events());
         $this->assertSame(['clash'], $outcome->errors());
-        $this->assertEquals(new Conflict('p.clash', ['field' => 'x'], '', '', []), $outcome->response());
+        $this->assertSame('p.clash', $outcome->messageKey());
+        $this->assertSame(['field' => 'x'], $outcome->context());
+        $this->assertEquals(new \stdClass(), $outcome->response(), 'the engine builds no failure form');
     }
 
     public function testRuleWithoutDeclarationRejectsWith422AndNothingFollows(): void
@@ -159,7 +160,7 @@ class EventsAndAnswerTest extends RunnerTestCase
 
     public function testRejectIsUntouchedByTheMissingPassThrough(): void
     {
-        // workflow 3.0: kein Durchreichen (STOPP 2, 9b) - a reject keeps its failure answer.
+        // workflow 3.0: kein Durchreichen (STOPP 2, 9b) - a reject keeps its key and context.
         $definition = ProcessDefinition::for('In', 'P')
             ->node(self::A)->onTrue(self::B)
             ->node(self::B)->terminal()
@@ -171,7 +172,9 @@ class EventsAndAnswerTest extends RunnerTestCase
         ]));
 
         $this->assertSame(ResponseStatus::Conflict, $outcome->status());
-        $this->assertEquals(new Conflict('p.clash', ['field' => 'x'], '', '', []), $outcome->response());
+        $this->assertSame('p.clash', $outcome->messageKey());
+        $this->assertSame(['field' => 'x'], $outcome->context());
+        $this->assertEquals(new \stdClass(), $outcome->response(), 'the engine builds no failure form');
     }
 
     public function testWithoutAnyAnswerAnEventNodeSeesNullAndTheRunAnswersAnEmptyObject(): void

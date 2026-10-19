@@ -9,12 +9,12 @@ use JardisSupport\Workflow\Data\NodeResult;
 use JardisSupport\Workflow\Data\ProcessContext;
 use JardisSupport\Workflow\Data\ProcessDefinition;
 use JardisSupport\Workflow\Data\RuleMode;
-use JardisSupport\Workflow\Tests\Support\TransactionTestCase;
+use JardisSupport\Workflow\Tests\Support\RunnerTestCase;
 
 /**
  * ruleMode applies the declared mode: a decision routes a violation to OnFalse, a guard rejects (W2).
  */
-class ApplyRuleModeTest extends TransactionTestCase
+class ApplyRuleModeTest extends RunnerTestCase
 {
     private const RULE = 'Node\\Rule';
     private const YES = 'Node\\Yes';
@@ -50,7 +50,7 @@ class ApplyRuleModeTest extends TransactionTestCase
     {
         $built = [];
 
-        $outcome = $this->runnerOn()->run(
+        $outcome = $this->runner()->run(
             $this->definition(RuleMode::Decision),
             new \stdClass(),
             null,
@@ -66,7 +66,7 @@ class ApplyRuleModeTest extends TransactionTestCase
     {
         $built = [];
 
-        $outcome = $this->runnerOn()->run(
+        $outcome = $this->runner()->run(
             $this->definition(RuleMode::Guard),
             new \stdClass(),
             null,
@@ -79,7 +79,7 @@ class ApplyRuleModeTest extends TransactionTestCase
 
     public function testNodeWithoutADeclaredModeIsAGuard(): void
     {
-        $outcome = $this->runnerOn()->run(
+        $outcome = $this->runner()->run(
             $this->definition(null),
             new \stdClass(),
             null,
@@ -91,7 +91,7 @@ class ApplyRuleModeTest extends TransactionTestCase
 
     public function testDecisionOnlyTurnsRuleViolationsNotOtherRejects(): void
     {
-        $outcome = $this->runnerOn()->run(
+        $outcome = $this->runner()->run(
             $this->definition(RuleMode::Decision),
             new \stdClass(),
             null,

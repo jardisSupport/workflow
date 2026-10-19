@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace JardisSupport\Workflow\Tests\Unit\Exception;
 
-use JardisSupport\Workflow\Exception\ConfigurationException;
 use JardisSupport\Workflow\Exception\ConstructionException;
 use JardisSupport\Workflow\Exception\LoopLimitExceededException;
 use JardisSupport\Workflow\Exception\UnroutedStatusException;
@@ -13,7 +12,7 @@ use PHPUnit\Framework\TestCase;
 use ReflectionClass;
 
 /**
- * Pure logic of the exception set: one abstract base, four leaves, accessors.
+ * Pure logic of the exception set: one abstract base, three leaves, accessors.
  */
 class ExceptionHierarchyTest extends TestCase
 {
@@ -29,7 +28,6 @@ class ExceptionHierarchyTest extends TestCase
     {
         $leaves = [
             new ConstructionException('c'),
-            new ConfigurationException('c'),
             new LoopLimitExceededException(3),
             new UnroutedStatusException('Node', 'onTrue'),
         ];
