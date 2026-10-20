@@ -232,7 +232,7 @@ run(
 
 The node factory is called each time a node is due, also on every loop pass. Around each node: `GuardLoop`, `CollectEvents`, `HydrateResponse`, `ApplyRuleMode`. The runner does not check the input, resolve the actor, open a transaction or log: the engine answers a finished run only - 200, or the 4xx a node rejected with. What a node throws, and the exceptions of the engine itself (`ConstructionException`, `UnroutedStatusException`, `LoopLimitExceededException`), leave `run()` unchanged; the door maps them.
 
-`ProcessOutcome` (`src/Data/ProcessOutcome.php`): `status(): ResponseStatus`, `response(): object`, `errors(): list<string>`, `events(): list<object>`, `messageKey(): ?string` and `context(): array` (both carry the reject of a failed run).
+`ProcessOutcome` (`src/Data/ProcessOutcome.php`): `status(): ResponseStatus`, `response(): object`, `errors(): list<string>`, `events(): list<object>`, `messageKey(): ?string` and `context(): array` (both carry the reject of a failed run) and `isFailed(): bool` (status 400 and above). `ProcessOutcome` implements `JardisSupport\Contract\Kernel\OutcomeInterface` (`status()`, `isFailed()`), so a consumer such as the transaction bracket of `jardissupport/repository` recognises a failed run without knowing this package and without comparing status numbers. Existing methods are unchanged.
 
 ---
 

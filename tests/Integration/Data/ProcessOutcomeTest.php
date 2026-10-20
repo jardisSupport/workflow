@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace JardisSupport\Workflow\Tests\Integration\Data;
 
+use JardisSupport\Contract\Kernel\OutcomeInterface;
 use JardisSupport\Contract\Kernel\ResponseStatus;
 use JardisSupport\Workflow\Data\ProcessOutcome;
 use PHPUnit\Framework\TestCase;
@@ -64,8 +65,54 @@ class ProcessOutcomeTest extends TestCase
         sort($methods);
 
         $this->assertSame(
-            ['__construct', 'context', 'errors', 'events', 'messageKey', 'response', 'status'],
+            ['__construct', 'context', 'errors', 'events', 'isFailed', 'messageKey', 'response', 'status'],
             $methods
         );
+    }
+
+    public function testOutcomeIsTheContractsOutcome(): void
+    {
+        $outcome = new ProcessOutcome(ResponseStatus::Success, new \stdClass());
+
+        $this->assertInstanceOf(OutcomeInterface::class, $outcome);
+    }
+
+    public function testIsFailedFollowsTheStatusLineOf400(): void
+    {
+        $failed = [];
+        foreach (ResponseStatus::cases() as $status) {
+            $failed[$status->name] = (new ProcessOutcome($status, new \stdClass()))->isFailed();
+        }
+
+        $this->assertSame(
+            [
+                'Success' => false,
+                'Created' => false,
+                'NoContent' => false,
+                'ValidationError' => true,
+                'Unauthorized' => true,
+                'Forbidden' => true,
+                'NotFound' => true,
+                'MethodNotAllowed' => true,
+                'Conflict' => true,
+                'RuleViolation' => true,
+                'InternalError' => true,
+            ],
+            $failed
+        );
+    }
+
+    public function testARunThatRejectsEndsAsAFailedOutcome(): void
+    {
+        $rejected = new ProcessOutcome(
+            ResponseStatus::RuleViolation,
+            new \stdClass(),
+            [],
+            [],
+            'order.creditExceeded'
+        );
+
+        $this->assertTrue($rejected->isFailed());
+        $this->assertSame(ResponseStatus::RuleViolation, $rejected->status());
     }
 }

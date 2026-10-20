@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace JardisSupport\Workflow\Data;
 
+use JardisSupport\Contract\Kernel\OutcomeInterface;
 use JardisSupport\Contract\Kernel\ResponseStatus;
 
 /**
@@ -13,8 +14,11 @@ use JardisSupport\Contract\Kernel\ResponseStatus;
  * The engine answers a success (200) or the reject of a node (4xx). A reject carries the message key
  * its node named (`messageKey`) and the plain data of the reject (`context`); the failure form of the
  * wire is built from them by the door, not here.
+ *
+ * It is an {@see OutcomeInterface}: whoever reacts to how the run ended (the transaction bracket, the
+ * answer of the door) asks `isFailed()` and compares no status numbers.
  */
-final readonly class ProcessOutcome
+final readonly class ProcessOutcome implements OutcomeInterface
 {
     /**
      * @param list<string> $errors
@@ -34,6 +38,14 @@ final readonly class ProcessOutcome
     public function status(): ResponseStatus
     {
         return $this->status;
+    }
+
+    /**
+     * True when the run ended in a reject (status 400 and above); a finished run is a 200.
+     */
+    public function isFailed(): bool
+    {
+        return $this->status->value >= 400;
     }
 
     public function response(): object
