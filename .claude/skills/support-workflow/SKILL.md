@@ -53,7 +53,7 @@ $outcome->events();   // the door publishes these AFTER the commit
 | Class | Entry points |
 |-------|--------------|
 | `ProcessRunner` | `final`, no constructor; `run(definition, input, actor, nodeFactory, int $depth = 0): ProcessOutcome` (`depth` = depth of the calling run + 1 for a sub-process) |
-| `ProcessDefinition` (`Data/ProcessDefinition.php`) | `for(inputClass, name)`, `context`, `answer(Answer)` (getter `getAnswer()`), `loopLimit(int)` (default 100), `ruleMode(node, RuleMode)`, `node`, `input(property)` (getter `getInput(node)`), `onTrue/onFalse/onSkip/onTimeout/onCancel/onExit(?target)`, `terminal(Route ...)`, `rejects(ResponseStatus, messageKey)`, `response(class, fields...)`, `build()`; declarations only the door reads: `transactional(bool)`, `validate`, `actor`, `requires(...)` |
+| `ProcessDefinition` (`Data/ProcessDefinition.php`) | `for(inputClass, name)`, `context`, `answer(Answer)` (getter `getAnswer()`), `loopLimit(int)` (default 100), `ruleMode(node, RuleMode)`, `node`, `input(property)` (getter `getInput(node)`), `onTrue/onFalse/onSkip/onTimeout/onCancel/onExit(?target)`, `terminal(Route ...)`, `rejects(ResponseStatus, messageKey)`, `response(class, fields...)`, `answerResponse(class, fields...)` (getters `getAnswerResponseClass()`/`getAnswerResponse()`), `build()`; declarations only the door reads: `transactional(bool)`, `validate`, `actor`, `requires(...)` |
 | `Answer` (enum) | `LastNode` (`'lastNode'`), `Merged` (`'merged'`) |
 | `NodeResult` | `ok(array\|object)`, `route(Route, data = null)`, `reject(status, messageKey, context = [], errors = [])`, `withEvents(object ...)`; readers `takenRoute data isRejected status messageKey context errors events` |
 | `ProcessContext` (not final) | `input actor previous latest(node) all(node) iteration(node) chain depth` |
@@ -64,7 +64,7 @@ $outcome->events();   // the door publishes these AFTER the commit
 
 **Context inheritance (W4).** `ProcessContext` is not `final`: generated processes extend it with typed getters over `latest()`/`all()`; named by `context()`, otherwise `run()` throws `ConstructionException` (`CreateContext.php:23`). The chain is immutable (`withStep` is engine-internal). Everything else in the package is `final`.
 
-**Answer of a run.** `LastNode`: the data of the last step; a last step without data answers an empty object; nothing is handed on from earlier steps (read them with `latest($node)` / `all($node)`). `Merged`: the data of all executed steps in run order (loop passes included), the later step wins on the same field name; `null` and `[]` add no field, an object adds its public properties (`get_object_vars`), a non-empty list throws `ConstructionException` (`Handler/Outcome/BuildOutcome.php`, `merged`). A reject is unaffected by the answer form.
+**Answer of a run.** `LastNode`: the data of the last step; a last step without data answers an empty object; nothing is handed on from earlier steps (read them with `latest($node)` / `all($node)`). `Merged`: the data of all executed steps in run order (loop passes included), the later step wins on the same field name; `null` and `[]` add no field, an object adds its public properties (`get_object_vars`), a non-empty list throws `ConstructionException` (`Handler/Outcome/BuildOutcome.php`, `merged`). With `answerResponse(class, fields...)` (only `Merged`, else `build()` throws) the union is projected onto the constructor fields of the class (none named = all; others fall away; missing required field or unknown class -> `ConstructionException`) - independent of kind and data of the last node; a node `response()` class on a node that ends the run is then not applied (`Context/HydrateResponse.php`, `Context/ConstructResponse.php`). A reject is unaffected by the answer form.
 
 **Reject in the outcome.** Status = the 4xx, empty `response()`, `errors()` of the reject, no events, `messageKey()` = the key the node declared with `rejects(status, key)`, else the one the reject names, `context()` = the reject context. With `input(property)` on the node, a 400 reject prefixes its `fields[].field` with `<property>.`; other statuses unchanged (`BuildOutcome.php:45-46`, `prefixed`). The failure form and the wire envelope are built by the door.
 
@@ -95,6 +95,7 @@ $outcome->events();   // the door publishes these AFTER the commit
 | 11 | `withEvents()` replaces earlier events of the same result | `NodeResult.php:74` |
 | 12 | `MapResponse` carries a callee message key only for 422 (400/404/409: only the key declared with `rejects()` reaches the outcome); a 5xx throws a `CalleeFailureException` (marker: cause already reported) even with `$onReject` | `Handler/Node/MapResponse.php` |
 | 13 | `input(property)` prefixes only the `fields` of a 400 reject of its node; a reject without `fields` or with another status stays unchanged | `Handler/Outcome/BuildOutcome.php:85` |
+| 14 | `answerResponse()` only with `Answer::Merged` (checked at `build()`, any call order); it types the PROCESS answer, `response()` types one NODE; mixing them up types the wrong thing | `Data/ProcessDefinition.php` (`build`), `Outcome/BuildOutcome.php` (`mergedData`) |
 
 ## Layer rules
 
