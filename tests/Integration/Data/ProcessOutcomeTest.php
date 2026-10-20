@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace JardisSupport\Workflow\Tests\Integration\Data;
 
+use JardisSupport\Contract\Kernel\AnswerableOutcomeInterface;
 use JardisSupport\Contract\Kernel\OutcomeInterface;
 use JardisSupport\Contract\Kernel\ResponseStatus;
 use JardisSupport\Workflow\Data\ProcessOutcome;
@@ -75,6 +76,7 @@ class ProcessOutcomeTest extends TestCase
         $outcome = new ProcessOutcome(ResponseStatus::Success, new \stdClass());
 
         $this->assertInstanceOf(OutcomeInterface::class, $outcome);
+        $this->assertInstanceOf(AnswerableOutcomeInterface::class, $outcome);
     }
 
     public function testIsFailedFollowsTheStatusLineOf400(): void

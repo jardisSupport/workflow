@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace JardisSupport\Workflow\Data;
 
-use JardisSupport\Contract\Kernel\OutcomeInterface;
+use JardisSupport\Contract\Kernel\AnswerableOutcomeInterface;
 use JardisSupport\Contract\Kernel\ResponseStatus;
 
 /**
@@ -15,10 +15,12 @@ use JardisSupport\Contract\Kernel\ResponseStatus;
  * its node named (`messageKey`) and the plain data of the reject (`context`); the failure form of the
  * wire is built from them by the door, not here.
  *
- * It is an {@see OutcomeInterface}: whoever reacts to how the run ended (the transaction bracket, the
- * answer of the door) asks `isFailed()` and compares no status numbers.
+ * It is an {@see AnswerableOutcomeInterface} (an `OutcomeInterface` that also carries response, errors, events,
+ * message key and context): whoever reacts to how the run ended (the transaction bracket) asks `isFailed()` and
+ * compares no status numbers, whoever builds the answer of the door from it (`jardissupport/response`) reads the
+ * rest - neither knows this class.
  */
-final readonly class ProcessOutcome implements OutcomeInterface
+final readonly class ProcessOutcome implements AnswerableOutcomeInterface
 {
     /**
      * @param list<string> $errors
