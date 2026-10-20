@@ -11,13 +11,15 @@ use JardisSupport\Workflow\Data\ProcessContext;
 use JardisSupport\Workflow\Data\ProcessDefinition;
 use JardisSupport\Workflow\Data\ProcessOutcome;
 use JardisSupport\Workflow\Exception\ConstructionException;
+use JardisSupport\Workflow\Handler\Context\ConstructResponse;
 
 /**
  * Builds the final {@see ProcessOutcome} from the finished run.
  *
  * Success: status 200, the response object in the form the process declared ({@see Answer}): the data of
  * the last step (a last step without data answers an empty object, nothing is handed on from earlier steps)
- * or the data of all steps united in run order; the events of all steps in execution order.
+ * or the data of all steps united in run order, projected onto the answer class the process declares
+ * ({@see ProcessDefinition::answerResponse()}) when it declares one; the events of all steps in execution order.
  * Reject: only the status, the message key, the context and the errors of the rejecting step, an empty
  * response object, no events; the failure form is the door's business.
  * The message key is the one the node declared for that status ({@see ProcessDefinition::rejects()})
@@ -27,8 +29,9 @@ use JardisSupport\Workflow\Exception\ConstructionException;
 final class BuildOutcome
 {
     /**
-     * @throws ConstructionException on a run without steps, data that is neither array nor object, or a list
-     *                               as step data of a merged answer
+     * @throws ConstructionException on a run without steps, data that is neither array nor object, a list
+     *                               as step data of a merged answer, or a declared process answer class that
+     *                               does not exist or lacks a required field
      */
     public function __invoke(ProcessContext $context, ?ProcessDefinition $definition = null): ProcessOutcome
     {
@@ -49,7 +52,7 @@ final class BuildOutcome
 
         return new ProcessOutcome(
             ResponseStatus::Success,
-            $this->response($context, $last, $definition?->getAnswer() ?? Answer::LastNode),
+            $this->response($context, $last, $definition),
             [],
             $this->events($context)
         );
@@ -98,12 +101,31 @@ final class BuildOutcome
         return $rejectContext;
     }
 
-    private function response(ProcessContext $context, NodeResult $last, Answer $answer): object
+    private function response(ProcessContext $context, NodeResult $last, ?ProcessDefinition $definition): object
     {
-        return match ($answer) {
+        return match ($definition?->getAnswer() ?? Answer::LastNode) {
             Answer::LastNode => $this->lastData($last),
-            Answer::Merged => (object) $this->merged($context),
+            Answer::Merged => $this->mergedData($context, $definition),
         };
+    }
+
+    /**
+     * The union of all steps; with a declared process answer class projected onto its fields.
+     */
+    private function mergedData(ProcessContext $context, ?ProcessDefinition $definition): object
+    {
+        $merged = $this->merged($context);
+        $class = $definition?->getAnswerResponseClass();
+        if ($class === null) {
+            return (object) $merged;
+        }
+
+        return (new ConstructResponse())(
+            'process ' . $definition->getName(),
+            $class,
+            $definition->getAnswerResponse() ?? [],
+            $merged
+        );
     }
 
     private function lastData(NodeResult $last): object

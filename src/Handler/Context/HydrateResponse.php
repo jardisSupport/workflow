@@ -7,6 +7,7 @@ namespace JardisSupport\Workflow\Handler\Context;
 use JardisSupport\Workflow\Data\NodeResult;
 use JardisSupport\Workflow\Data\ProcessContext;
 use JardisSupport\Workflow\Data\ProcessDefinition;
+use JardisSupport\Workflow\Data\Route;
 use JardisSupport\Workflow\Exception\ConstructionException;
 
 /**
@@ -16,8 +17,9 @@ use JardisSupport\Workflow\Exception\ConstructionException;
  * class; without a declaration the data stays as it is. The object is built through the constructor
  * of the declared class with named arguments taken from the declared fields (none declared = all
  * constructor fields). A required constructor argument without a value, or a declared class that
- * does not exist, is a {@see ConstructionException}. Everything else passes unchanged, events and
- * route included.
+ * does not exist, is a {@see ConstructionException} ({@see ConstructResponse}). Everything else passes
+ * unchanged, events and route included; so does a terminal end of a process that declares its own answer
+ * class, because the process answer is not the class of its last node.
  */
 final class HydrateResponse
 {
@@ -38,42 +40,26 @@ final class HydrateResponse
         if ($class === null || $route === null || !is_array($data)) {
             return $result;
         }
+        if ($this->answersProcess($definition, $node, $route)) {
+            return $result;
+        }
 
-        return NodeResult::route($route, $this->build($node, $class, $definition->getResponse($node) ?? [], $data))
-            ->withEvents(...$result->events());
+        return NodeResult::route(
+            $route,
+            (new ConstructResponse())('node ' . $node, $class, $definition->getResponse($node) ?? [], $data)
+        )->withEvents(...$result->events());
     }
 
     /**
-     * @param list<string> $fields
-     * @param array<array-key, mixed> $data
-     * @throws ConstructionException
+     * A terminal end of a process that declares its own answer class: the process answer is projected from the
+     * united steps ({@see ProcessDefinition::answerResponse()}), the end node's class is not applied.
      */
-    private function build(string $node, string $class, array $fields, array $data): object
+    private function answersProcess(ProcessDefinition $definition, string $node, Route $route): bool
     {
-        if (!class_exists($class)) {
-            throw new ConstructionException(sprintf(
-                'Node %s declares the response class %s, which does not exist',
-                $node,
-                $class
-            ));
-        }
-        $constructor = (new \ReflectionClass($class))->getConstructor();
-        $arguments = [];
-        foreach ($constructor?->getParameters() ?? [] as $parameter) {
-            $name = $parameter->getName();
-            $declared = $fields === [] || in_array($name, $fields, true);
-            if ($declared && array_key_exists($name, $data)) {
-                $arguments[$name] = $data[$name];
-            } elseif (!$parameter->isOptional()) {
-                throw new ConstructionException(sprintf(
-                    'Response %s needs a value for the required field "%s" of node %s',
-                    $class,
-                    $name,
-                    $node
-                ));
-            }
-        }
+        $transitions = $definition->config()->transitions($node);
 
-        return new $class(...$arguments);
+        return $definition->getAnswerResponseClass() !== null
+            && array_key_exists($route->value, $transitions)
+            && $transitions[$route->value] === null;
     }
 }

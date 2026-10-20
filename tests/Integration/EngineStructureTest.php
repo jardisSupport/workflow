@@ -28,6 +28,7 @@ class EngineStructureTest extends TestCase
         'Exception\\LoopLimitExceededException',
         'Exception\\UnroutedStatusException',
         'Exception\\WorkflowException',
+        'Handler\\Context\\ConstructResponse',
         'Handler\\Context\\CreateContext',
         'Handler\\Context\\HydrateResponse',
         'Handler\\Events\\CollectEvents',
@@ -56,7 +57,7 @@ class EngineStructureTest extends TestCase
         sort($documented);
 
         $this->assertSame($documented, $found);
-        $this->assertCount(26, $found);
+        $this->assertCount(27, $found);
         foreach (self::DOCUMENTED as $class) {
             $reflection = new \ReflectionClass('JardisSupport\\Workflow\\' . $class);
             $this->assertSame(

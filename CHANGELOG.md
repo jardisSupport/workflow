@@ -4,6 +4,17 @@ All notable changes to `jardissupport/workflow` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [SemVer](https://semver.org/). Releases before 2.2.0 are listed in the git history and the GitHub releases.
 
+## [4.1.0] - Unreleased
+
+### Added
+
+- `ProcessDefinition::answerResponse(string $responseClass, string ...$fields)` / `getAnswerResponseClass()` / `getAnswerResponse()`: the typed answer of the whole process. With `Answer::Merged` the united data of all steps (later wins) is projected onto the declared fields of the class (none named = all constructor fields; fields not declared fall away; a required field without a value or an unknown class throws `ConstructionException`), whatever kind and data the last node has. Declared without `Answer::Merged`, `build()` throws a `ConstructionException`. Without a process answer class `Merged` stays byte-identical to 4.0.
+- `Handler\Context\ConstructResponse` (shared construction of a typed response object from fields, used by `HydrateResponse` and `BuildOutcome`; messages of the node case unchanged). 27 classes.
+
+### Changed
+
+- `HydrateResponse` does not apply the `response()` class of a node that ends the run (taken route = terminal) when the process declares an answer class: the process answer is not the class of its last node. Nodes that do not end the run keep their class; processes without a process answer class are unchanged.
+
 ## [4.0.0] - Unreleased
 
 ### BREAKING

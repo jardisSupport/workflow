@@ -205,11 +205,12 @@ $rejected->response();   // empty object, the failure form is the door's busines
 | `rejects(ResponseStatus $status, string $messageKey)` | Declare a 4xx the current node may reject with and the message key it answers for that status (non-4xx throws) |
 | `input(string $property)` | Name the process input property that feeds the current node; its 400 rejects answer field paths below it |
 | `response(string $responseClass, string ...$fields)` | Typed answer of the current node, see below |
+| `answerResponse(string $responseClass, string ...$fields)` | Typed answer of the whole process, only with `Answer::Merged`, see "Answer of a run" |
 | `build()` | Validate the graph (unknown targets, unknown rule-mode node) and freeze |
 
 Declarations for the door, which reads them and acts on them - the engine itself ignores them: `transactional(bool)` (default on), `validate(string $validatorClass)`, `actor(string $actorClass)`, `requires(string ...$requires)`.
 
-Getters: `getInputClass()`, `getName()`, `getContextClass()`, `getAnswer()`, `isTransactional()`, `getValidatorClass()`, `getActorClass()`, `getRequires()`, `getLoopLimit()`, `getRuleMode($node)`, `getRejects($node)`, `getInput($node)`, `getResponse($node)`, `getResponseClass($node)`, `isBuilt()`.
+Getters: `getInputClass()`, `getName()`, `getContextClass()`, `getAnswer()`, `isTransactional()`, `getValidatorClass()`, `getActorClass()`, `getRequires()`, `getLoopLimit()`, `getRuleMode($node)`, `getRejects($node)`, `getInput($node)`, `getResponse($node)`, `getResponseClass($node)`, `getAnswerResponseClass()`, `getAnswerResponse()`, `isBuilt()`.
 
 **`response(class, fields...)`**: the data array of the node is turned into an object of `class` through its constructor, with named arguments. The fields name the subset of constructor parameters taken from the data (none named: all). A required parameter without a value, or an unknown class, throws a `ConstructionException`. Only an array result of a routed node is converted; a node without a declaration keeps its data.
 
@@ -360,6 +361,18 @@ $outcome = $runner->run($merged, new stdClass(), null, static fn(string $class):
     'Merged\Reserve' => static fn(ProcessContext $c): NodeResult => NodeResult::ok(['state' => 'reserved']),
 });
 // response {id: 7, state: 'reserved'}
+```
+
+**Typed process answer.** `answerResponse(class, fields...)` (only with `Merged`; `build()` throws a `ConstructionException` for `LastNode`, in any call order) projects the union onto the constructor fields of `class` (none named: all; fields not named fall away). The answer then no longer depends on the kind or the data of the last node - a sub-process node that hands on a foreign answer, or a node without data, leaves the fields of the earlier steps intact. A required field the union lacks, or an unknown class, throws a `ConstructionException`. A `response()` class on a node that **ends** the run is not applied in this case (the process answer is not the class of its last node); the `response()` classes of the other nodes stay. Without `answerResponse()` the union is returned as it is.
+
+```php
+$definition = ProcessDefinition::for(CreateQuote::class, 'CreateQuote')
+    ->answer(Answer::Merged)
+    ->answerResponse(QuoteAnswer::class, 'quoteNumber', 'status')   // QuoteAnswer(string $quoteNumber, string $status)
+    ->node(Create::class)->onTrue(PriceCheck::class)
+    ->node(PriceCheck::class)->terminal()                           // a sub-process with a foreign answer
+    ->build();
+// response QuoteAnswer {quoteNumber, status}: later wins, everything else falls away
 ```
 
 A node that needs the answer of an earlier node reads it explicitly through `ProcessContext::latest($node)` / `all($node)` (the typed getters of a generated context do exactly that); `previous()` is the result of the node run last, which can be a node without data. A reject is unaffected by the answer form: it ends the run with its status, message key, context and errors.

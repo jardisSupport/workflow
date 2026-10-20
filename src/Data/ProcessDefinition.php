@@ -28,6 +28,9 @@ final class ProcessDefinition
     private array $requires = [];
     private int $loopLimit = self::DEFAULT_LOOP_LIMIT;
     private Answer $answer = Answer::LastNode;
+    private ?string $answerResponseClass = null;
+    /** @var list<string> */
+    private array $answerResponseFields = [];
     private ?string $currentNode = null;
     /** @var array<string, RuleMode> */
     private array $ruleModes = [];
@@ -106,6 +109,31 @@ final class ProcessDefinition
     {
         $this->assertOpen();
         $this->answer = $answer;
+
+        return $this;
+    }
+
+    /**
+     * Declares the typed answer of the whole process: the response class and the subset of its constructor
+     * fields taken from the united data of all steps (none named = all fields). The union is projected onto
+     * these fields, so the answer does not depend on the kind or the data of the last node.
+     *
+     * Only for {@see Answer::Merged}; build() throws a {@see ConstructionException} for any other answer form,
+     * wherever in the chain this method is called. Not to be mixed up with {@see self::response()}, which
+     * types the answer of one node.
+     *
+     * @throws ConstructionException on an empty class name
+     */
+    public function answerResponse(string $responseClass, string ...$fields): self
+    {
+        $this->assertOpen();
+        if ($responseClass === '') {
+            throw new ConstructionException(
+                sprintf('answerResponse() of process "%s" needs a response class', $this->name)
+            );
+        }
+        $this->answerResponseClass = $responseClass;
+        $this->answerResponseFields = array_values($fields);
 
         return $this;
     }
@@ -243,7 +271,8 @@ final class ProcessDefinition
     /**
      * Validates the graph and freezes the definition.
      *
-     * @throws ConstructionException on an empty graph, an unknown route target or an unknown rule-mode node
+     * @throws ConstructionException on an empty graph, an unknown route target, an unknown rule-mode node or a
+     *                               process answer class without Answer::Merged
      */
     public function build(): self
     {
@@ -255,6 +284,14 @@ final class ProcessDefinition
             if (!$this->configBuilder->hasNode($node)) {
                 throw new ConstructionException(sprintf('ruleMode() names unknown node "%s"', $node));
             }
+        }
+
+        if ($this->answerResponseClass !== null && $this->answer !== Answer::Merged) {
+            throw new ConstructionException(sprintf(
+                'answerResponse() of process "%s" needs Answer::Merged, the answer is %s',
+                $this->name,
+                $this->answer->value
+            ));
         }
 
         $this->config = $this->configBuilder->build();
@@ -309,6 +346,23 @@ final class ProcessDefinition
     public function getAnswer(): Answer
     {
         return $this->answer;
+    }
+
+    /**
+     * @return string|null the declared answer class of the process; null when the process declares none
+     */
+    public function getAnswerResponseClass(): ?string
+    {
+        return $this->answerResponseClass;
+    }
+
+    /**
+     * @return list<string>|null the declared field subset of the process answer (empty = all fields); null when the
+     *                           process declares no answer class
+     */
+    public function getAnswerResponse(): ?array
+    {
+        return $this->answerResponseClass === null ? null : $this->answerResponseFields;
     }
 
     public function getLoopLimit(): int
