@@ -37,6 +37,15 @@ final readonly class ProcessOutcome implements AnswerableOutcomeInterface
     ) {
     }
 
+    /**
+     * A copy with another answer; status, errors, events, message key and context stay as they are. The outcome
+     * itself is unchanged - whoever reshapes the typed answer (for instance onto its wire form) takes the copy.
+     */
+    public function withResponse(object $response): self
+    {
+        return new self($this->status, $response, $this->errors, $this->events, $this->messageKey, $this->context);
+    }
+
     public function status(): ResponseStatus
     {
         return $this->status;

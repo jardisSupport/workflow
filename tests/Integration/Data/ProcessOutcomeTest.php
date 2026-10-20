@@ -66,9 +66,49 @@ class ProcessOutcomeTest extends TestCase
         sort($methods);
 
         $this->assertSame(
-            ['__construct', 'context', 'errors', 'events', 'isFailed', 'messageKey', 'response', 'status'],
+            ['__construct', 'context', 'errors', 'events', 'isFailed', 'messageKey', 'response', 'status', 'withResponse'],
             $methods
         );
+    }
+
+    public function testWithResponseCopiesEveryOtherFieldAndLeavesTheOriginalUnchanged(): void
+    {
+        $old = new \stdClass();
+        $new = new \stdClass();
+        $event = new \stdClass();
+        $original = new ProcessOutcome(
+            ResponseStatus::RuleViolation,
+            $old,
+            ['too much'],
+            [$event],
+            'order.creditExceeded',
+            ['limit' => 10]
+        );
+
+        $copy = $original->withResponse($new);
+
+        $this->assertNotSame($original, $copy);
+        $this->assertSame($new, $copy->response());
+        $this->assertSame(ResponseStatus::RuleViolation, $copy->status());
+        $this->assertSame(['too much'], $copy->errors());
+        $this->assertSame([$event], $copy->events());
+        $this->assertSame('order.creditExceeded', $copy->messageKey());
+        $this->assertSame(['limit' => 10], $copy->context());
+        $this->assertTrue($copy->isFailed());
+        $this->assertSame($old, $original->response(), 'the original keeps its answer');
+    }
+
+    public function testWithResponseOnASuccessKeepsDefaults(): void
+    {
+        $copy = (new ProcessOutcome(ResponseStatus::Success, new \stdClass()))->withResponse($answer = new \stdClass());
+
+        $this->assertSame($answer, $copy->response());
+        $this->assertSame(ResponseStatus::Success, $copy->status());
+        $this->assertSame([], $copy->errors());
+        $this->assertSame([], $copy->events());
+        $this->assertNull($copy->messageKey());
+        $this->assertSame([], $copy->context());
+        $this->assertFalse($copy->isFailed());
     }
 
     public function testOutcomeIsTheContractsOutcome(): void

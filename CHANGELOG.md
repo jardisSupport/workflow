@@ -8,6 +8,7 @@ versioning follows [SemVer](https://semver.org/). Releases before 2.2.0 are list
 
 ### Added
 
+- `ProcessOutcome::withResponse(object $response): self`: a copy with another answer, every other field (status, errors, events, message key, context) as it was; the outcome stays immutable. For whoever reshapes the typed answer of a run (the wire projection of a door) without rebuilding the outcome by hand.
 - `ProcessOutcome` implements `JardisSupport\Contract\Kernel\AnswerableOutcomeInterface` (extends `OutcomeInterface`; needs a contracts release that ships it) and gains `isFailed(): bool` (status 400 and above). No existing method changes. The answer closures of `jardissupport/response` read the outcome through the interface.
 - `ProcessDefinition::answerResponse(string $responseClass, string ...$fields)` / `getAnswerResponseClass()` / `getAnswerResponse()`: the typed answer of the whole process. With `Answer::Merged` the united data of all steps (later wins) is projected onto the declared fields of the class (none named = all constructor fields; fields not declared fall away; a required field without a value or an unknown class throws `ConstructionException`), whatever kind and data the last node has. Declared without `Answer::Merged`, `build()` throws a `ConstructionException`. Without a process answer class `Merged` stays byte-identical to 4.0.
 - `Handler\Context\ConstructResponse` (shared construction of a typed response object from fields, used by `HydrateResponse` and `BuildOutcome`; messages of the node case unchanged). 27 classes.
