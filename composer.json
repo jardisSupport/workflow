@@ -14,7 +14,7 @@
     ],
     "require": {
         "php": ">=8.3",
-        "jardissupport/contracts": "^2.13"
+        "jardissupport/contracts": "^2.15"
     },
     "require-dev": {
         "jardissupport/scheduling": "^1.2",

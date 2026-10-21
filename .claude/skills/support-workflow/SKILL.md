@@ -57,7 +57,7 @@ $outcome->events();   // the door publishes these AFTER the commit
 | `Answer` (enum) | `LastNode` (`'lastNode'`), `Merged` (`'merged'`) |
 | `NodeResult` | `ok(array\|object)`, `route(Route, data = null)`, `reject(status, messageKey, context = [], errors = [])`, `withEvents(object ...)`; readers `takenRoute data isRejected status messageKey context errors events` |
 | `ProcessContext` (not final) | `input actor previous latest(node) all(node) iteration(node) chain depth` |
-| `ProcessOutcome` | `status response errors events messageKey context` |
+| `ProcessOutcome` | `status response errors events messageKey context`, `isFailed()` (status >= 400), `withResponse(object): self` (a copy with another answer, every other field unchanged; the outcome stays immutable) |
 | `MapResponse` | `__invoke(DomainResponseInterface, ?Route $onReject = null): NodeResult` (2xx ok + the Domain events of the callee flattened (Internal events stay behind); 4xx reject with the callee's plain context - `@type` dropped, inner `context` lifted, 400 `fields` / 409 `reason aggregate violated` / 422 `rule` kept; callee key only for 422; other 4xx e.g. 401/403: data unchanged as context; `$onReject` routes a 4xx instead; else throws: a 5xx a `CalleeFailureException` carrying the marker `ReportedFailureExceptionInterface`, any other status a plain `\RuntimeException`) |
 
 ## Full reference

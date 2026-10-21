@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace JardisSupport\Workflow\Tests\Integration\Data;
 
+use JardisSupport\Contract\Kernel\AnswerableOutcomeInterface;
+use JardisSupport\Contract\Kernel\OutcomeInterface;
 use JardisSupport\Contract\Kernel\ResponseStatus;
 use JardisSupport\Workflow\Data\ProcessOutcome;
 use PHPUnit\Framework\TestCase;
@@ -64,8 +66,95 @@ class ProcessOutcomeTest extends TestCase
         sort($methods);
 
         $this->assertSame(
-            ['__construct', 'context', 'errors', 'events', 'messageKey', 'response', 'status'],
+            ['__construct', 'context', 'errors', 'events', 'isFailed', 'messageKey', 'response', 'status', 'withResponse'],
             $methods
         );
+    }
+
+    public function testWithResponseCopiesEveryOtherFieldAndLeavesTheOriginalUnchanged(): void
+    {
+        $old = new \stdClass();
+        $new = new \stdClass();
+        $event = new \stdClass();
+        $original = new ProcessOutcome(
+            ResponseStatus::RuleViolation,
+            $old,
+            ['too much'],
+            [$event],
+            'order.creditExceeded',
+            ['limit' => 10]
+        );
+
+        $copy = $original->withResponse($new);
+
+        $this->assertNotSame($original, $copy);
+        $this->assertSame($new, $copy->response());
+        $this->assertSame(ResponseStatus::RuleViolation, $copy->status());
+        $this->assertSame(['too much'], $copy->errors());
+        $this->assertSame([$event], $copy->events());
+        $this->assertSame('order.creditExceeded', $copy->messageKey());
+        $this->assertSame(['limit' => 10], $copy->context());
+        $this->assertTrue($copy->isFailed());
+        $this->assertSame($old, $original->response(), 'the original keeps its answer');
+    }
+
+    public function testWithResponseOnASuccessKeepsDefaults(): void
+    {
+        $copy = (new ProcessOutcome(ResponseStatus::Success, new \stdClass()))->withResponse($answer = new \stdClass());
+
+        $this->assertSame($answer, $copy->response());
+        $this->assertSame(ResponseStatus::Success, $copy->status());
+        $this->assertSame([], $copy->errors());
+        $this->assertSame([], $copy->events());
+        $this->assertNull($copy->messageKey());
+        $this->assertSame([], $copy->context());
+        $this->assertFalse($copy->isFailed());
+    }
+
+    public function testOutcomeIsTheContractsOutcome(): void
+    {
+        $outcome = new ProcessOutcome(ResponseStatus::Success, new \stdClass());
+
+        $this->assertInstanceOf(OutcomeInterface::class, $outcome);
+        $this->assertInstanceOf(AnswerableOutcomeInterface::class, $outcome);
+    }
+
+    public function testIsFailedFollowsTheStatusLineOf400(): void
+    {
+        $failed = [];
+        foreach (ResponseStatus::cases() as $status) {
+            $failed[$status->name] = (new ProcessOutcome($status, new \stdClass()))->isFailed();
+        }
+
+        $this->assertSame(
+            [
+                'Success' => false,
+                'Created' => false,
+                'NoContent' => false,
+                'ValidationError' => true,
+                'Unauthorized' => true,
+                'Forbidden' => true,
+                'NotFound' => true,
+                'MethodNotAllowed' => true,
+                'Conflict' => true,
+                'RuleViolation' => true,
+                'InternalError' => true,
+            ],
+            $failed
+        );
+    }
+
+    public function testARunThatRejectsEndsAsAFailedOutcome(): void
+    {
+        $rejected = new ProcessOutcome(
+            ResponseStatus::RuleViolation,
+            new \stdClass(),
+            [],
+            [],
+            'order.creditExceeded'
+        );
+
+        $this->assertTrue($rejected->isFailed());
+        $this->assertSame(ResponseStatus::RuleViolation, $rejected->status());
     }
 }
