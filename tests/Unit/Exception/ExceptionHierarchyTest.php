@@ -6,7 +6,6 @@ namespace JardisSupport\Workflow\Tests\Unit\Exception;
 
 use JardisSupport\Workflow\Exception\ConstructionException;
 use JardisSupport\Workflow\Exception\LoopLimitExceededException;
-use JardisSupport\Workflow\Exception\MissingStepException;
 use JardisSupport\Workflow\Exception\UnroutedStatusException;
 use JardisSupport\Workflow\Exception\WorkflowException;
 use PHPUnit\Framework\TestCase;
@@ -31,7 +30,6 @@ class ExceptionHierarchyTest extends TestCase
             new ConstructionException('c'),
             new LoopLimitExceededException(3),
             new UnroutedStatusException('Node', 'onTrue'),
-            new MissingStepException('Node'),
         ];
 
         foreach ($leaves as $leaf) {
