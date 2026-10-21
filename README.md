@@ -428,6 +428,22 @@ $runner->run($poll(2), new stdClass(), null, $pollFactory);
 
 ---
 
+## Reading steps, fields and enums
+
+Five single-purpose closures in `Handler\Context\` carry what a rule or action node otherwise writes inline. Each has one `__invoke`; a node calls them and keeps no logic of its own.
+
+| Closure | Call | Answer |
+|---------|------|--------|
+| `RequireStep` | `($step, 'Node')` | the step typed as it came (`@template T of object`; a `NodeResult` or a typed answer object); `null` raises `MissingStepException('Node')` |
+| `ReadStepField` | `($result, 'field')` | the field of the step data: array key or public property; missing or `null` reads as `null` |
+| `RequireStepField` | `($result, 'field', 'Node')` | like `ReadStepField`, `null` raises `MissingStepException('Node/field')` |
+| `ReadEnum` | `($value, Enum::class)` | the enum case; `null` stays `null`; an invalid value keeps the `ValueError` of `BackedEnum::from()` |
+| `ReadEnumList` | `($values, Enum::class)` | the list of cases; `null` stays `null` |
+
+`MissingStepException` extends `WorkflowException` (a programming error of the wiring); the door maps it like any other throwable.
+
+---
+
 ## Layer rules
 
 - The application layer builds the definition and starts the runner; the domain core never imports workflow classes.
