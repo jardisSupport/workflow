@@ -4,6 +4,17 @@ All notable changes to `jardissupport/workflow` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [SemVer](https://semver.org/). Releases before 2.2.0 are listed in the git history and the GitHub releases.
 
+## [4.2.0] - 2026-10-21
+
+### Added
+
+- `ProcessOutcome::withResponse(object $response): self`: a copy with another answer, every other field (status, errors, events, message key, context) as it was; the outcome stays immutable. For whoever reshapes the typed answer of a run (the wire projection of a door) without rebuilding the outcome by hand.
+- `ProcessOutcome` implements `JardisSupport\Contract\Kernel\AnswerableOutcomeInterface` (extends `OutcomeInterface`; needs `jardissupport/contracts` ^2.15) and gains `isFailed(): bool` (status 400 and above). No existing method changes. The answer closures of `jardissupport/response` read the outcome through the interface.
+
+### Changed
+
+- `require`: `jardissupport/contracts` ^2.13 becomes ^2.15 (ships `AnswerableOutcomeInterface`).
+
 ## [4.1.0] - Unreleased
 
 ### Added
