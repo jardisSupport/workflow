@@ -49,7 +49,6 @@ class RetryProbeTest extends RunnerTestCase
         $outcome = $this->runner()->run(
             $this->load('RetryProbeUntilHealthy'),
             new \stdClass(),
-            null,
             $this->factory($this->nodes(2), $built)
         );
 
@@ -66,7 +65,7 @@ class RetryProbeTest extends RunnerTestCase
     {
         $built = [];
 
-        $this->runner()->run($this->load('RetryProbeUntilHealthy'), new \stdClass(), null, $this->factory($this->nodes(0), $built));
+        $this->runner()->run($this->load('RetryProbeUntilHealthy'), new \stdClass(), $this->factory($this->nodes(0), $built));
 
         $this->assertSame([self::EVALUATE], $built);
     }
@@ -79,7 +78,6 @@ class RetryProbeTest extends RunnerTestCase
             $this->runner()->run(
                 $this->load('RetryProbeUntilHealthy'),
                 new \stdClass(),
-                null,
                 $this->factory($this->nodes(PHP_INT_MAX), $built)
             );
             $this->fail('the endless variant must end at the loop limit');

@@ -34,7 +34,7 @@ class NodeContextTest extends RunnerTestCase
             return NodeResult::ok(['from' => count($contexts)]);
         };
 
-        $this->runner()->run($definition, new \stdClass(), null, $this->factory([self::A => $record, self::B => $record]));
+        $this->runner()->run($definition, new \stdClass(), $this->factory([self::A => $record, self::B => $record]));
 
         [$first, $second] = $contexts;
         $this->assertNull($first->previous());
@@ -68,7 +68,7 @@ class NodeContextTest extends RunnerTestCase
             },
         ];
 
-        $this->runner()->run($definition, new \stdClass(), null, $this->factory($nodes));
+        $this->runner()->run($definition, new \stdClass(), $this->factory($nodes));
 
         $this->assertInstanceOf(ProcessContext::class, $atEnd);
         $this->assertSame(['run' => 'second'], $atEnd->latest(self::C)?->data());

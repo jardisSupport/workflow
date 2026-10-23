@@ -40,7 +40,7 @@ class AnswerTest extends RunnerTestCase
             ->node(self::B)->terminal()
             ->build();
 
-        $outcome = $this->runner()->run($definition, new \stdClass(), null, $this->factory([
+        $outcome = $this->runner()->run($definition, new \stdClass(), $this->factory([
             self::A => static fn(ProcessContext $c): NodeResult => NodeResult::ok(['a' => 1]),
             self::B => static fn(ProcessContext $c): NodeResult => NodeResult::ok(['b' => 2]),
         ]));
@@ -58,7 +58,7 @@ class AnswerTest extends RunnerTestCase
             ->node(self::C)->terminal()
             ->build();
 
-        $outcome = $this->runner()->run($definition, new \stdClass(), null, $this->factory([
+        $outcome = $this->runner()->run($definition, new \stdClass(), $this->factory([
             self::A => static fn(ProcessContext $c): NodeResult => NodeResult::ok(['id' => 7, 'state' => 'draft']),
             self::B => static fn(ProcessContext $c): NodeResult => NodeResult::route(Route::OnTrue),
             self::C => static fn(ProcessContext $c): NodeResult => NodeResult::ok(['state' => 'done', 'total' => 30]),
@@ -80,7 +80,7 @@ class AnswerTest extends RunnerTestCase
             ->node(self::B)->onTrue(self::A)->onExit(null)
             ->build();
 
-        $outcome = $this->runner()->run($definition, new \stdClass(), null, $this->factory([
+        $outcome = $this->runner()->run($definition, new \stdClass(), $this->factory([
             self::A => static fn(ProcessContext $c): NodeResult => NodeResult::ok([
                 'round' . $c->iteration(self::A) => 'a',
                 'last' => $c->iteration(self::A),
@@ -115,7 +115,7 @@ class AnswerTest extends RunnerTestCase
             ->node(self::B)->terminal()
             ->build();
 
-        $outcome = $this->runner()->run($definition, new \stdClass(), null, $this->factory([
+        $outcome = $this->runner()->run($definition, new \stdClass(), $this->factory([
             self::A => static fn(ProcessContext $c): NodeResult => NodeResult::ok($typed),
             self::B => static fn(ProcessContext $c): NodeResult => NodeResult::ok(['sent' => true]),
         ]));
@@ -135,7 +135,7 @@ class AnswerTest extends RunnerTestCase
         $this->expectException(ConstructionException::class);
         $this->expectExceptionMessage(self::A);
 
-        $this->runner()->run($definition, new \stdClass(), null, $this->factory([
+        $this->runner()->run($definition, new \stdClass(), $this->factory([
             self::A => static fn(ProcessContext $c): NodeResult => NodeResult::ok(['first', 'second']),
             self::B => static fn(ProcessContext $c): NodeResult => NodeResult::ok(['b' => 1]),
         ]));
@@ -147,7 +147,7 @@ class AnswerTest extends RunnerTestCase
 
         $this->expectException(ConstructionException::class);
 
-        $this->runner()->run($definition, new \stdClass(), null, $this->factory([
+        $this->runner()->run($definition, new \stdClass(), $this->factory([
             self::A => static fn(ProcessContext $c): NodeResult => NodeResult::route(Route::OnTrue, 'text'),
         ]));
     }
@@ -162,7 +162,7 @@ class AnswerTest extends RunnerTestCase
 
         $this->expectException(ConstructionException::class);
 
-        $this->runner()->run($definition, new \stdClass(), null, $this->factory([
+        $this->runner()->run($definition, new \stdClass(), $this->factory([
             self::A => static fn(ProcessContext $c): NodeResult => NodeResult::route(Route::OnTrue, 42),
             self::B => static fn(ProcessContext $c): NodeResult => NodeResult::ok(['b' => 1]),
         ]));
@@ -177,7 +177,7 @@ class AnswerTest extends RunnerTestCase
             ->node(self::C)->terminal()
             ->build();
 
-        $outcome = $this->runner()->run($definition, new \stdClass(), null, $this->factory([
+        $outcome = $this->runner()->run($definition, new \stdClass(), $this->factory([
             self::A => static fn(ProcessContext $c): NodeResult => NodeResult::route(Route::OnTrue, null),
             self::B => static fn(ProcessContext $c): NodeResult => NodeResult::route(Route::OnTrue, []),
             self::C => static fn(ProcessContext $c): NodeResult => NodeResult::ok(['c' => 1]),

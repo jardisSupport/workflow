@@ -16,15 +16,13 @@ use ReflectionMethod;
  */
 class ProcessContextTest extends TestCase
 {
-    public function testFreshContextExposesInputActorAndEmptyChain(): void
+    public function testFreshContextExposesInputAndEmptyChain(): void
     {
         $input = new \stdClass();
-        $actor = new \stdClass();
 
-        $context = new ProcessContext($input, $actor);
+        $context = new ProcessContext($input);
 
         $this->assertSame($input, $context->input());
-        $this->assertSame($actor, $context->actor());
         $this->assertNull($context->previous());
         $this->assertNull($context->latest('Node\\A'));
         $this->assertSame([], $context->all('Node\\A'));
@@ -33,11 +31,10 @@ class ProcessContextTest extends TestCase
         $this->assertSame(0, $context->depth());
     }
 
-    public function testActorDefaultsToNullAndDepthIsCarried(): void
+    public function testDepthIsCarried(): void
     {
-        $context = new ProcessContext(new \stdClass(), null, 3);
+        $context = new ProcessContext(new \stdClass(), 3);
 
-        $this->assertNull($context->actor());
         $this->assertSame(3, $context->depth());
     }
 
@@ -55,15 +52,13 @@ class ProcessContextTest extends TestCase
         $this->assertSame([['node' => 'Node\\A', 'result' => $result]], $next->chain());
     }
 
-    public function testWithStepKeepsInputActorAndDepth(): void
+    public function testWithStepKeepsInputAndDepth(): void
     {
         $input = new \stdClass();
-        $actor = new \stdClass();
 
-        $next = (new ProcessContext($input, $actor, 2))->withStep('Node\\A', NodeResult::ok([]));
+        $next = (new ProcessContext($input, 2))->withStep('Node\\A', NodeResult::ok([]));
 
         $this->assertSame($input, $next->input());
-        $this->assertSame($actor, $next->actor());
         $this->assertSame(2, $next->depth());
     }
 

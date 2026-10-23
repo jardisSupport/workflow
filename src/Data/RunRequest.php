@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace JardisSupport\Workflow\Data;
 
 /**
- * One call of the runner as a value: what to run, with which input and actor, how nodes are
+ * One call of the runner as a value: what to run, with which input, how nodes are
  * built, and how deep the run is nested.
  *
  * @internal Carries data between the runner and its closures, not part of the public API.
@@ -18,7 +18,6 @@ final readonly class RunRequest
     private function __construct(
         public ProcessDefinition $definition,
         public object $input,
-        public ?object $actor,
         public \Closure $nodeFactory,
         public int $depth,
     ) {
@@ -31,10 +30,9 @@ final readonly class RunRequest
     public static function of(
         ProcessDefinition $definition,
         object $input,
-        ?object $actor,
         \Closure $nodeFactory,
         int $depth = 0,
     ): self {
-        return new self($definition, $input, $actor, $nodeFactory, $depth);
+        return new self($definition, $input, $nodeFactory, $depth);
     }
 }

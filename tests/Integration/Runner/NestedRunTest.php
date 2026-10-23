@@ -57,7 +57,7 @@ class NestedRunTest extends RunnerTestCase
             },
         ]);
 
-        $runner->run($outer, new \stdClass(), null, $this->factory([
+        $runner->run($outer, new \stdClass(), $this->factory([
             self::A => $record('outer'),
             self::B => $this->subProcess($runner, $inner, $innerNodes),
         ]));
@@ -83,7 +83,7 @@ class NestedRunTest extends RunnerTestCase
             ->node(self::B)->terminal()
             ->build();
 
-        $outcome = $this->runner()->run($definition, new \stdClass(), null, $this->factory([
+        $outcome = $this->runner()->run($definition, new \stdClass(), $this->factory([
             self::A => static fn(ProcessContext $c): NodeResult => NodeResult::ok(['a' => 1]),
             self::B => static fn(ProcessContext $c): NodeResult => NodeResult::ok(['k' => 'v']),
         ], $built));
@@ -114,7 +114,7 @@ class NestedRunTest extends RunnerTestCase
             self::INNER_B => $note('inner-b', ResponseStatus::RuleViolation),
         ]);
 
-        $outcome = $runner->run($definition, new \stdClass(), null, $this->factory([
+        $outcome = $runner->run($definition, new \stdClass(), $this->factory([
             self::A => $note('outer-a'),
             self::B => $this->subProcess($runner, $this->inner(), $innerNodes, Route::OnFalse),
             self::C => $note('outer-c'),
@@ -138,7 +138,7 @@ class NestedRunTest extends RunnerTestCase
             self::INNER_B => static fn(ProcessContext $c): NodeResult => NodeResult::ok(['n' => 2]),
         ]);
 
-        $outcome = $runner->run($definition, new \stdClass(), null, $this->factory([
+        $outcome = $runner->run($definition, new \stdClass(), $this->factory([
             self::A => $this->subProcess($runner, $this->inner(), $innerNodes),
             self::B => static fn(ProcessContext $c): NodeResult => NodeResult::ok(['done' => true])->withEvents($outerEvent),
         ]));
@@ -153,7 +153,7 @@ class NestedRunTest extends RunnerTestCase
         $definition = ProcessDefinition::for('In', 'Outer')->node(self::A)->terminal()->build();
         $finding = ['field' => 'customer', 'reason' => 'missing', 'message' => 'Required', 'messageKey' => 'validation.missing'];
 
-        $outcome = $runner->run($definition, new \stdClass(), null, $this->factory([
+        $outcome = $runner->run($definition, new \stdClass(), $this->factory([
             self::A => $this->subProcess($runner, $inner, $this->factory([
                 self::INNER_A => static fn(ProcessContext $c): NodeResult => NodeResult::reject(
                     ResponseStatus::ValidationError,
@@ -187,7 +187,7 @@ class NestedRunTest extends RunnerTestCase
         $ok = static fn(ProcessContext $c): NodeResult => NodeResult::ok(['n' => 1]);
         $innerNodes = $this->factory([self::INNER_A => $ok, self::INNER_B => $ok]);
 
-        $outcome = $runner->run($definition, new \stdClass(), null, $this->factory([
+        $outcome = $runner->run($definition, new \stdClass(), $this->factory([
             self::A => $ok,
             self::B => $this->subProcess($runner, $inner, $innerNodes),
             self::C => $ok,

@@ -130,7 +130,7 @@ class CallNodeEnvelopeTest extends RunnerTestCase
             ->rejects(ResponseStatus::Unauthorized, 'access.invalidCredentials')
             ->terminal()->build();
 
-        $outcome = $this->runner()->run($definition, new \stdClass(), null, $this->factory([
+        $outcome = $this->runner()->run($definition, new \stdClass(), $this->factory([
             self::CALL => static fn(ProcessContext $c): NodeResult => NodeResult::reject(
                 ResponseStatus::Unauthorized,
                 '',
@@ -149,7 +149,7 @@ class CallNodeEnvelopeTest extends RunnerTestCase
     {
         $definition = ProcessDefinition::for('In', 'P')->node(self::CALL)->terminal()->build();
 
-        $outcome = $this->runner()->run($definition, new \stdClass(), null, $this->factory([
+        $outcome = $this->runner()->run($definition, new \stdClass(), $this->factory([
             self::CALL => static fn(ProcessContext $c): NodeResult => NodeResult::reject(
                 ResponseStatus::Forbidden,
                 'systemHealth.shift_forbidden',
@@ -196,7 +196,7 @@ class CallNodeEnvelopeTest extends RunnerTestCase
         }
         $definition = $definition->terminal()->build();
 
-        $outcome = $this->runner()->run($definition, new \stdClass(), null, $this->factory([
+        $outcome = $this->runner()->run($definition, new \stdClass(), $this->factory([
             self::CALL => static fn(ProcessContext $c): NodeResult => (new MapResponse())(
                 new FakeDomainResponse($status->value, $calleeData)
             ),

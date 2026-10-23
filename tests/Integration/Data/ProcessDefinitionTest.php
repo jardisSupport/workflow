@@ -57,7 +57,6 @@ class ProcessDefinitionTest extends TestCase
         $this->assertSame(100, $definition->getLoopLimit());
         $this->assertNull($definition->getContextClass());
         $this->assertNull($definition->getValidatorClass());
-        $this->assertNull($definition->getActorClass());
         $this->assertSame([], $definition->getRequires());
     }
 
@@ -80,13 +79,6 @@ class ProcessDefinitionTest extends TestCase
         $definition = ProcessDefinition::for('Input\\Dto', 'P')->validate('Reg\\Validators');
 
         $this->assertSame('Reg\\Validators', $definition->getValidatorClass());
-    }
-
-    public function testActorSetsTheActorClass(): void
-    {
-        $definition = ProcessDefinition::for('Input\\Dto', 'P')->actor('Auth\\Subject');
-
-        $this->assertSame('Auth\\Subject', $definition->getActorClass());
     }
 
     public function testRequiresCollectsNamesAcrossCallsWithoutDuplicates(): void
@@ -348,7 +340,6 @@ class ProcessDefinitionTest extends TestCase
             'context' => [static fn (ProcessDefinition $d) => $d->context('X')],
             'transactional' => [static fn (ProcessDefinition $d) => $d->transactional(false)],
             'validate' => [static fn (ProcessDefinition $d) => $d->validate('X')],
-            'actor' => [static fn (ProcessDefinition $d) => $d->actor('X')],
             'requires' => [static fn (ProcessDefinition $d) => $d->requires('x')],
             'loopLimit' => [static fn (ProcessDefinition $d) => $d->loopLimit(3)],
             'ruleMode' => [static fn (ProcessDefinition $d) => $d->ruleMode(self::A, RuleMode::Guard)],
