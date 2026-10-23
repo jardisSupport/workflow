@@ -20,7 +20,7 @@ class BuildOutcomeTest extends RunnerTestCase
 
     private function rejectWith(ProcessDefinition $definition, NodeResult $reject): ProcessOutcome
     {
-        return $this->runner()->run($definition, new \stdClass(), null, $this->factory([
+        return $this->runner()->run($definition, new \stdClass(), $this->factory([
             self::NODE => static fn(ProcessContext $c): NodeResult => $reject,
         ]));
     }

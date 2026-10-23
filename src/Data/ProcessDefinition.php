@@ -9,7 +9,7 @@ use JardisSupport\Workflow\Data\Builder\WorkflowConfigBuilder;
 use JardisSupport\Workflow\Exception\ConstructionException;
 
 /**
- * Declarative description of one process: input, actor, start contract, node graph and per-node declarations.
+ * Declarative description of one process: input, start contract, node graph and per-node declarations.
  *
  * Built fluently, then frozen by {@see self::build()}: afterwards every mutator throws a
  * {@see ConstructionException}. Node-scoped methods (onTrue ... onExit, terminal, rejects,
@@ -23,7 +23,6 @@ final class ProcessDefinition
     private ?string $contextClass = null;
     private bool $transactional = true;
     private ?string $validatorClass = null;
-    private ?string $actorClass = null;
     /** @var list<string> */
     private array $requires = [];
     private int $loopLimit = self::DEFAULT_LOOP_LIMIT;
@@ -82,14 +81,6 @@ final class ProcessDefinition
     {
         $this->assertOpen();
         $this->validatorClass = $validatorClass;
-
-        return $this;
-    }
-
-    public function actor(string $actorClass): self
-    {
-        $this->assertOpen();
-        $this->actorClass = $actorClass;
 
         return $this;
     }
@@ -328,11 +319,6 @@ final class ProcessDefinition
     public function getValidatorClass(): ?string
     {
         return $this->validatorClass;
-    }
-
-    public function getActorClass(): ?string
-    {
-        return $this->actorClass;
     }
 
     /**

@@ -34,7 +34,6 @@ class RunnerChainTest extends RunnerTestCase
         $outcome = $this->runner()->run(
             $definition,
             new \stdClass(),
-            null,
             $this->factory([ReserveStock::class => new ReserveStock()])
         );
 
@@ -55,7 +54,6 @@ class RunnerChainTest extends RunnerTestCase
         $outcome = $this->runner()->run(
             $definition,
             new \stdClass(),
-            null,
             $this->factory([self::A => static fn(ProcessContext $c): NodeResult => NodeResult::ok(
                 ['reservationId' => 'R-9', 'quantity' => 1, 'internal' => 'hidden']
             )])
@@ -75,7 +73,6 @@ class RunnerChainTest extends RunnerTestCase
         $outcome = $this->runner()->run(
             $definition,
             new \stdClass(),
-            null,
             $this->factory([ReserveStock::class => new ReserveStock()])
         );
 
@@ -94,7 +91,6 @@ class RunnerChainTest extends RunnerTestCase
         $this->runner()->run(
             $definition,
             new \stdClass(),
-            null,
             $this->factory([ReserveStock::class => new ReserveStock()])
         );
     }
@@ -108,7 +104,6 @@ class RunnerChainTest extends RunnerTestCase
         $this->runner()->run(
             $definition,
             new \stdClass(),
-            null,
             $this->factory([self::A => static fn(ProcessContext $c): NodeResult => NodeResult::ok(['x' => 1])])
         );
     }
@@ -121,7 +116,6 @@ class RunnerChainTest extends RunnerTestCase
         $outcome = $this->runner()->run(
             $definition,
             new \stdClass(),
-            null,
             $this->factory([self::A => static fn(ProcessContext $c): NodeResult => NodeResult::ok($object)])
         );
 
@@ -142,7 +136,6 @@ class RunnerChainTest extends RunnerTestCase
             $this->runner()->run(
                 $definition,
                 new \stdClass(),
-                null,
                 $this->factory([self::A => $ok, self::B => $ok], $built)
             );
             $this->fail('the loop limit must stop the run');
@@ -153,15 +146,14 @@ class RunnerChainTest extends RunnerTestCase
         $this->assertSame([self::A, self::B], $built, 'the third node is never asked for');
     }
 
-    public function testDeclaredContextClassCarriesInputActorAndDepth(): void
+    public function testDeclaredContextClassCarriesInputAndDepth(): void
     {
         $definition = ProcessDefinition::for('In', 'Checkout')->context(CheckoutContext::class)
             ->node(self::A)->terminal()->build();
         $seen = null;
         $input = new \stdClass();
-        $actor = new \stdClass();
 
-        $this->runner()->run($definition, $input, $actor, $this->factory([
+        $this->runner()->run($definition, $input, $this->factory([
             self::A => static function (ProcessContext $c) use (&$seen): NodeResult {
                 $seen = $c;
 
@@ -171,7 +163,6 @@ class RunnerChainTest extends RunnerTestCase
 
         $this->assertInstanceOf(CheckoutContext::class, $seen);
         $this->assertSame($input, $seen->input());
-        $this->assertSame($actor, $seen->actor());
         $this->assertSame('checkout:2', $seen->marker(), 'the depth of the run reaches the context class');
     }
 
@@ -181,7 +172,7 @@ class RunnerChainTest extends RunnerTestCase
 
         $this->expectException(ConstructionException::class);
 
-        $this->runner()->run($definition, new \stdClass(), null, $this->factory([]));
+        $this->runner()->run($definition, new \stdClass(), $this->factory([]));
     }
 
     public function testOutermostRunHasDepthZero(): void
@@ -189,7 +180,7 @@ class RunnerChainTest extends RunnerTestCase
         $definition = ProcessDefinition::for('In', 'P')->node(self::A)->terminal()->build();
         $depth = -1;
 
-        $this->runner()->run($definition, new \stdClass(), null, $this->factory([
+        $this->runner()->run($definition, new \stdClass(), $this->factory([
             self::A => static function (ProcessContext $c) use (&$depth): NodeResult {
                 $depth = $c->depth();
 

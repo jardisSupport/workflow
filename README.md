@@ -9,20 +9,20 @@
 
 > Part of **[Jardis](https://jardis.io)** — the Domain-Driven Design platform for PHP. You model your domain; Jardis generates the production-ready hexagonal code (DTOs, Command/Query handlers, repositories, persistence). This package is part of the open-source foundation that generated code runs on.
 
-Process engine for one request-response use case in PHP. A process is a declared graph of nodes; the runner walks the graph, collects the events and answers with one typed `ProcessOutcome` — status, response object, errors, events. The engine is the graph and nothing around it: input validation, actor check, transaction, failure forms and logging belong to the door in front of the runner (see `jardissupport/response`).
+Process engine for one request-response use case in PHP. A process is a declared graph of nodes; the runner walks the graph, collects the events and answers with one typed `ProcessOutcome` — status, response object, errors, events. The engine is the graph and nothing around it: input validation, transaction, failure forms and logging belong to the door in front of the runner (see `jardissupport/response`).
 
 ---
 
 ## Features
 
-- **One run, one call** — `ProcessRunner::run()` takes input and actor and answers with a `ProcessOutcome`; a node that rejects ends the run with a 4xx, a node that throws is thrown on unchanged
+- **One run, one call** — `ProcessRunner::run()` takes input and answers with a `ProcessOutcome`; a node that rejects ends the run with a 4xx, a node that throws is thrown on unchanged
 - **Declarative graph** — `ProcessDefinition` describes nodes, routes (`onTrue`/`onFalse`/`onSkip`/`onTimeout`/`onCancel`/`onExit`), terminal ends, loop limit and per-node declarations; frozen by `build()`
 - **Three node kinds** — Action (your code), Call (a command, query or sub-process), Rule (a business check); all share one contract: `callable(ProcessContext): NodeResult`
 - **Reject instead of route** — `NodeResult::reject()` ends the run at once with a 4xx; it is not a route
 - **Two answer forms** — `Answer::LastNode` (default: the data of the last step) or `Answer::Merged` (the data of all steps united), declared per process
 - **Typed answers** — every node can declare a response class
 - **Events at the result** — events travel with the `NodeResult`; the caller publishes them after the commit
-- **Immutable chain** — `ProcessContext` exposes input, actor and the results of the nodes run so far
+- **Immutable chain** — `ProcessContext` exposes input and the results of the nodes run so far
 - **Strict routing** — a route without a declared key raises `UnroutedStatusException`; an explicit `null` target is a declared end
 - **No door inside** — no validation, no transaction, no logging, no failure forms: what a node throws leaves the runner unchanged
 
@@ -48,7 +48,7 @@ Requires PHP 8.3+ and `jardissupport/contracts` ^2.12 (`ResponseStatus`, `Domain
 | Reject | `NodeResult::reject(4xx, ...)`. Not a route: the run ends and the outcome carries the status, the message key, the context and the errors of the reject |
 | End | Declared with `terminal()` (a route mapped to `null`) |
 | Answer | The form of the response of a successful run, declared with `answer(Answer)`: the last step or all steps united |
-| Door | Everything in front of and around the engine: input check, actor check, transaction, failure forms, logging. Not part of this package |
+| Door | Everything in front of and around the engine: input check, transaction, failure forms, logging. Not part of this package |
 
 ---
 
@@ -66,17 +66,10 @@ use JardisSupport\Workflow\Data\Route;
 use JardisSupport\Workflow\Data\RuleMode;
 use JardisSupport\Workflow\ProcessRunner;
 
-// Input, actor and event of the process
+// Input and event of the process
 final class PlaceOrder
 {
     public function __construct(public ?string $customer, public int $qty)
-    {
-    }
-}
-
-final class Buyer
-{
-    public function __construct(public string $id)
     {
     }
 }
@@ -172,13 +165,13 @@ $nodeFactory = static fn(string $class): object => match ($class) {
     ConfirmOrder::class => new ConfirmOrder(),
 };
 
-$outcome = $runner->run($definition, new PlaceOrder('ACME', 2), new Buyer('b-1'), $nodeFactory);
+$outcome = $runner->run($definition, new PlaceOrder('ACME', 2), $nodeFactory);
 
 $outcome->status();   // ResponseStatus::Success (200)
 $outcome->response(); // {sku: 'A-1', qty: 2, orderNo: 'O-A-1', status: 'confirmed'} - all steps united (Answer::Merged)
 $outcome->events();   // [OrderPlaced {orderNo: 'O-A-1'}]
 
-$rejected = $runner->run($definition, new PlaceOrder('ACME', 500), new Buyer('b-1'), $nodeFactory);
+$rejected = $runner->run($definition, new PlaceOrder('ACME', 500), $nodeFactory);
 
 $rejected->status();     // ResponseStatus::RuleViolation (422)
 $rejected->messageKey(); // 'order.creditExceeded'
@@ -208,9 +201,9 @@ $rejected->response();   // empty object, the failure form is the door's busines
 | `answerResponse(string $responseClass, string ...$fields)` | Typed answer of the whole process, only with `Answer::Merged`, see "Answer of a run" |
 | `build()` | Validate the graph (unknown targets, unknown rule-mode node) and freeze |
 
-Declarations for the door, which reads them and acts on them - the engine itself ignores them: `transactional(bool)` (default on), `validate(string $validatorClass)`, `actor(string $actorClass)`, `requires(string ...$requires)`.
+Declarations for the door, which reads them and acts on them - the engine itself ignores them: `transactional(bool)` (default on), `validate(string $validatorClass)`, `requires(string ...$requires)`.
 
-Getters: `getInputClass()`, `getName()`, `getContextClass()`, `getAnswer()`, `isTransactional()`, `getValidatorClass()`, `getActorClass()`, `getRequires()`, `getLoopLimit()`, `getRuleMode($node)`, `getRejects($node)`, `getInput($node)`, `getResponse($node)`, `getResponseClass($node)`, `getAnswerResponseClass()`, `getAnswerResponse()`, `isBuilt()`.
+Getters: `getInputClass()`, `getName()`, `getContextClass()`, `getAnswer()`, `isTransactional()`, `getValidatorClass()`, `getRequires()`, `getLoopLimit()`, `getRuleMode($node)`, `getRejects($node)`, `getInput($node)`, `getResponse($node)`, `getResponseClass($node)`, `getAnswerResponseClass()`, `getAnswerResponse()`, `isBuilt()`.
 
 **`response(class, fields...)`**: the data array of the node is turned into an object of `class` through its constructor, with named arguments. The fields name the subset of constructor parameters taken from the data (none named: all). A required parameter without a value, or an unknown class, throws a `ConstructionException`. Only an array result of a routed node is converted; a node without a declaration keeps its data.
 
@@ -224,13 +217,12 @@ new ProcessRunner()      // no constructor arguments, no state between runs
 run(
     ProcessDefinition $definition,
     object $input,
-    ?object $actor,
     \Closure $nodeFactory,   // \Closure(class-string): object - builds the node; callable-ness is checked by the package
     int $depth = 0           // nesting depth: 0 at the outermost level, else the depth of the calling run plus one
 ): ProcessOutcome
 ```
 
-The node factory is called each time a node is due, also on every loop pass. Around each node: `GuardLoop`, `CollectEvents`, `HydrateResponse`, `ApplyRuleMode`. The runner does not check the input, resolve the actor, open a transaction or log: the engine answers a finished run only - 200, or the 4xx a node rejected with. What a node throws, and the exceptions of the engine itself (`ConstructionException`, `UnroutedStatusException`, `LoopLimitExceededException`), leave `run()` unchanged; the door maps them.
+The node factory is called each time a node is due, also on every loop pass. Around each node: `GuardLoop`, `CollectEvents`, `HydrateResponse`, `ApplyRuleMode`. The runner does not check the input, open a transaction or log: the engine answers a finished run only - 200, or the 4xx a node rejected with. What a node throws, and the exceptions of the engine itself (`ConstructionException`, `UnroutedStatusException`, `LoopLimitExceededException`), leave `run()` unchanged; the door maps them.
 
 `ProcessOutcome` (`src/Data/ProcessOutcome.php`): `status(): ResponseStatus`, `response(): object`, `errors(): list<string>`, `events(): list<object>`, `messageKey(): ?string` and `context(): array` (both carry the reject of a failed run) and `isFailed(): bool` (status 400 and above) and `withResponse(object): self` (a copy with another answer, all other fields unchanged). `ProcessOutcome` implements `JardisSupport\Contract\Kernel\AnswerableOutcomeInterface` (an `OutcomeInterface` - `status()`, `isFailed()` - plus the five accessors above), so a consumer such as the transaction bracket of `jardissupport/repository` recognises a failed run, and the answer closures of `jardissupport/response` build the answer from it, without knowing this package and without comparing status numbers. Existing methods are unchanged.
 
@@ -243,7 +235,6 @@ Read-only view of one run, handed to every node:
 | Method | Returns |
 |--------|---------|
 | `input()` | The input object |
-| `actor()` | The actor object or `null` |
 | `previous()` | `?NodeResult` of the node run last |
 | `latest(string $node)` | `?NodeResult`, most recent result of that node |
 | `all(string $node)` | `list<NodeResult>` of that node in execution order |
@@ -388,7 +379,7 @@ Events travel with the node result (`->withEvents(...)`); the package never send
 - **The caller publishes after the commit.** The engine opens no transaction; the door commits, then publishes:
 
 ```php
-$outcome = $runner->run($definition, new PlaceOrder('ACME', 2), new Buyer('b-1'), $nodeFactory);
+$outcome = $runner->run($definition, new PlaceOrder('ACME', 2), $nodeFactory);
 
 $published = [];
 foreach ($outcome->events() as $event) {
@@ -419,10 +410,10 @@ $poll = static fn(int $limit): ProcessDefinition => ProcessDefinition::for(stdCl
     ->build();
 $pollFactory = static fn(string $class): object => new Poll();
 
-$outcome = $runner->run($poll(10), new stdClass(), null, $pollFactory);
+$outcome = $runner->run($poll(10), new stdClass(), $pollFactory);
 // ResponseStatus::Success, response {polls: 3}
 
-$runner->run($poll(2), new stdClass(), null, $pollFactory);
+$runner->run($poll(2), new stdClass(), $pollFactory);
 // throws LoopLimitExceededException
 ```
 

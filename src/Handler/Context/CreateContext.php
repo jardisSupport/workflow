@@ -28,6 +28,6 @@ final class CreateContext
             ));
         }
 
-        return new $class($request->input, $request->actor, $request->depth);
+        return new $class($request->input, $request->depth);
     }
 }

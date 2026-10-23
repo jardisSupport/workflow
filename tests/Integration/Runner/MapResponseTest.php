@@ -288,8 +288,8 @@ class MapResponseTest extends RunnerTestCase
             ['inner said no']
         )]);
 
-        $innerOutcome = $runner->run($inner, new \stdClass(), null, $innerNodes);
-        $outerOutcome = $runner->run($outer, new \stdClass(), null, $this->factory([
+        $innerOutcome = $runner->run($inner, new \stdClass(), $innerNodes);
+        $outerOutcome = $runner->run($outer, new \stdClass(), $this->factory([
             'Outer\\A' => $this->subProcess($runner, $inner, $innerNodes),
         ]));
 

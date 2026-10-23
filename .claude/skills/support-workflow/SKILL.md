@@ -1,6 +1,6 @@
 ---
 name: support-workflow
-description: jardissupport/workflow 4.0 - the process engine for one request-response use case, and nothing around it. Declare a node graph with ProcessDefinition, run it with ProcessRunner (no constructor), get a typed ProcessOutcome; NodeResult (ok, route, reject, withEvents), ProcessContext, answer form Answer (LastNode, Merged), MapResponse for call and sub-process nodes, reject outcome (status, messageKey, context, errors), loops. Validation, actor check, transaction, failure forms, envelope data and logging are the door's business (jardissupport/response). Use when working with ProcessRunner, ProcessDefinition, NodeResult, ProcessContext, Answer, MapResponse or jardissupport/workflow.
+description: jardissupport/workflow 5.0 - the process engine for one request-response use case, and nothing around it. Declare a node graph with ProcessDefinition, run it with ProcessRunner (no constructor), get a typed ProcessOutcome; NodeResult (ok, route, reject, withEvents), ProcessContext, answer form Answer (LastNode, Merged), MapResponse for call and sub-process nodes, reject outcome (status, messageKey, context, errors), loops. Validation, transaction, failure forms, envelope data and logging are the door's business (jardissupport/response). Use when working with ProcessRunner, ProcessDefinition, NodeResult, ProcessContext, Answer, MapResponse or jardissupport/workflow.
 user-invocable: false
 zone: post-active
 persona: C
@@ -9,20 +9,20 @@ next: [generated-code-workflow-api, support-response]
 ---
 
 # WORKFLOW_COMPONENT_SKILL
-> `jardissupport/workflow` 4.0 | NS: `JardisSupport\Workflow` | PHP 8.3+ | requires `jardissupport/contracts` ^2.12 only
+> `jardissupport/workflow` 5.0 | NS: `JardisSupport\Workflow` | PHP 8.3+ | requires `jardissupport/contracts` ^2.12 only
 
 ## Usage essentials
 
 **Trigger:** ProcessRunner, ProcessDefinition, NodeResult, ProcessContext, ProcessOutcome, Answer, Answer::Merged, MapResponse, RuleMode, LoopLimitExceededException, UnroutedStatusException.
 
 ```
-ProcessRunner::run($definition, $input, $actor, $nodeFactory, int $depth = 0)
+ProcessRunner::run($definition, $input, $nodeFactory, int $depth = 0)
   core: CreateContext -> Workflow engine over the node chain -> BuildOutcome
   per node: GuardLoop -> CollectEvents -> HydrateResponse -> ApplyRuleMode -> your node
   -> ProcessOutcome { status, response, errors, events, messageKey, context }
 ```
 
-No input check, no actor check, no transaction, no logging, no failure forms in the engine: they belong to the door in front of the runner (`jardissupport/response`, skill `support-response`; in generated code the handler). What a node throws leaves `run()` unchanged.
+No input check, no transaction, no logging, no failure forms in the engine: they belong to the door in front of the runner (`jardissupport/response`, skill `support-response`; in generated code the handler). What a node throws leaves `run()` unchanged.
 
 | Concept | Meaning |
 |---------|---------|
@@ -42,7 +42,7 @@ $definition = ProcessDefinition::for(PlaceOrder::class, 'PlaceOrder')   // input
     ->build();
 
 $runner = new ProcessRunner();                                    // no constructor, no state
-$outcome = $runner->run($definition, new PlaceOrder('ACME', 2), new Buyer('b-1'), $nodeFactory);
+$outcome = $runner->run($definition, new PlaceOrder('ACME', 2), $nodeFactory);
 $outcome->status();   // ResponseStatus::Success
 $outcome->response(); // object: all steps united (Answer::Merged)
 $outcome->events();   // the door publishes these AFTER the commit
@@ -52,11 +52,11 @@ $outcome->events();   // the door publishes these AFTER the commit
 
 | Class | Entry points |
 |-------|--------------|
-| `ProcessRunner` | `final`, no constructor; `run(definition, input, actor, nodeFactory, int $depth = 0): ProcessOutcome` (`depth` = depth of the calling run + 1 for a sub-process) |
-| `ProcessDefinition` (`Data/ProcessDefinition.php`) | `for(inputClass, name)`, `context`, `answer(Answer)` (getter `getAnswer()`), `loopLimit(int)` (default 100), `ruleMode(node, RuleMode)`, `node`, `input(property)` (getter `getInput(node)`), `onTrue/onFalse/onSkip/onTimeout/onCancel/onExit(?target)`, `terminal(Route ...)`, `rejects(ResponseStatus, messageKey)`, `response(class, fields...)`, `answerResponse(class, fields...)` (getters `getAnswerResponseClass()`/`getAnswerResponse()`), `build()`; declarations only the door reads: `transactional(bool)`, `validate`, `actor`, `requires(...)` |
+| `ProcessRunner` | `final`, no constructor; `run(definition, input, nodeFactory, int $depth = 0): ProcessOutcome` (`depth` = depth of the calling run + 1 for a sub-process) |
+| `ProcessDefinition` (`Data/ProcessDefinition.php`) | `for(inputClass, name)`, `context`, `answer(Answer)` (getter `getAnswer()`), `loopLimit(int)` (default 100), `ruleMode(node, RuleMode)`, `node`, `input(property)` (getter `getInput(node)`), `onTrue/onFalse/onSkip/onTimeout/onCancel/onExit(?target)`, `terminal(Route ...)`, `rejects(ResponseStatus, messageKey)`, `response(class, fields...)`, `answerResponse(class, fields...)` (getters `getAnswerResponseClass()`/`getAnswerResponse()`), `build()`; declarations only the door reads: `transactional(bool)`, `validate`, `requires(...)` |
 | `Answer` (enum) | `LastNode` (`'lastNode'`), `Merged` (`'merged'`) |
 | `NodeResult` | `ok(array\|object)`, `route(Route, data = null)`, `reject(status, messageKey, context = [], errors = [])`, `withEvents(object ...)`; readers `takenRoute data isRejected status messageKey context errors events` |
-| `ProcessContext` (not final) | `input actor previous latest(node) all(node) iteration(node) chain depth` |
+| `ProcessContext` (not final) | `input previous latest(node) all(node) iteration(node) chain depth` |
 | `ProcessOutcome` | `status response errors events messageKey context`, `isFailed()` (status >= 400), `withResponse(object): self` (a copy with another answer, every other field unchanged; the outcome stays immutable) |
 | `MapResponse` | `__invoke(DomainResponseInterface, ?Route $onReject = null): NodeResult` (2xx ok + the Domain events of the callee flattened (Internal events stay behind); 4xx reject with the callee's plain context - `@type` dropped, inner `context` lifted, 400 `fields` / 409 `reason aggregate violated` / 422 `rule` kept; callee key only for 422; other 4xx e.g. 401/403: data unchanged as context; `$onReject` routes a 4xx instead; else throws: a 5xx a `CalleeFailureException` carrying the marker `ReportedFailureExceptionInterface`, any other status a plain `\RuntimeException`) |
 
@@ -89,7 +89,7 @@ $outcome->events();   // the door publishes these AFTER the commit
 | 5 | A rejected result drops its events; a run that ends in a reject reports none | `Events/CollectEvents.php:30` |
 | 6 | Nothing is handed on between nodes: `route()` without data is a result without data; with `Answer::LastNode` a last node without data answers an empty object; read earlier answers with `latest($node)` / `all($node)` or declare `Answer::Merged` | `Outcome/BuildOutcome.php` (`response`) |
 | 7 | `Answer::Merged` needs fields by name: a non-empty list as step data throws `ConstructionException`; `null` and `[]` are fine | `Outcome/BuildOutcome.php` (`merged`) |
-| 8 | `transactional`, `validate`, `actor`, `requires` are declarations for the door; the engine ignores them | `Data/ProcessDefinition.php` |
+| 8 | `transactional`, `validate`, `requires` are declarations for the door; the engine ignores them | `Data/ProcessDefinition.php` |
 | 9 | The loop limit is checked before the node is built; the exceeding step never runs and `run()` throws | `Loop/GuardLoop.php:30` |
 | 10 | After `build()` every mutator (also `answer()`) throws; a context class must extend `ProcessContext` | `ProcessDefinition.php:383-389`, `Context/CreateContext.php:23` |
 | 11 | `withEvents()` replaces earlier events of the same result | `NodeResult.php:74` |

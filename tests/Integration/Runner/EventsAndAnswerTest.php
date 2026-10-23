@@ -34,7 +34,7 @@ class EventsAndAnswerTest extends RunnerTestCase
             ->node(self::B)->terminal()
             ->build();
 
-        $outcome = $this->runner()->run($definition, new \stdClass(), null, $this->factory([
+        $outcome = $this->runner()->run($definition, new \stdClass(), $this->factory([
             self::A => static fn(ProcessContext $c): NodeResult => NodeResult::ok(['a' => 1])->withEvents($e1, $e2),
             self::B => static fn(ProcessContext $c): NodeResult => NodeResult::ok(['b' => 1])->withEvents($e3),
         ]));
@@ -50,7 +50,7 @@ class EventsAndAnswerTest extends RunnerTestCase
             ->node(self::B)->terminal()
             ->build();
 
-        $outcome = $this->runner()->run($definition, new \stdClass(), null, $this->factory([
+        $outcome = $this->runner()->run($definition, new \stdClass(), $this->factory([
             self::A => static fn(ProcessContext $c): NodeResult => NodeResult::ok([])->withEvents(new \stdClass()),
             self::B => static fn(ProcessContext $c): NodeResult => NodeResult::reject(
                 ResponseStatus::Conflict,
@@ -79,7 +79,7 @@ class EventsAndAnswerTest extends RunnerTestCase
             new FakeDomainResponse(422, ['messageKey' => 'p.rule_failed'])
         );
 
-        $outcome = $this->runner()->run($definition, new \stdClass(), null, $this->factory([
+        $outcome = $this->runner()->run($definition, new \stdClass(), $this->factory([
             self::A => $rule,
             self::B => static fn(ProcessContext $c): NodeResult => NodeResult::ok([]),
         ], $built));
@@ -99,7 +99,7 @@ class EventsAndAnswerTest extends RunnerTestCase
             ->build();
         $built = [];
 
-        $outcome = $this->runner()->run($definition, new \stdClass(), null, $this->factory([
+        $outcome = $this->runner()->run($definition, new \stdClass(), $this->factory([
             self::A => static fn(ProcessContext $c): NodeResult => NodeResult::route(Route::OnFalse),
             self::B => static fn(ProcessContext $c): NodeResult => NodeResult::ok(['via' => 'B']),
             self::C => static fn(ProcessContext $c): NodeResult => NodeResult::ok(['via' => 'C']),
@@ -122,7 +122,7 @@ class EventsAndAnswerTest extends RunnerTestCase
         $e1 = new \stdClass();
         $e2 = new \stdClass();
 
-        $outcome = $this->runner()->run($definition, new \stdClass(), null, $this->factory([
+        $outcome = $this->runner()->run($definition, new \stdClass(), $this->factory([
             self::A => static fn(ProcessContext $c): NodeResult => NodeResult::ok(['id' => 7]),
             self::B => static fn(ProcessContext $c): NodeResult => NodeResult::route(Route::OnTrue)->withEvents($e1),
             self::C => static fn(ProcessContext $c): NodeResult => NodeResult::route(Route::OnTrue),
@@ -144,7 +144,7 @@ class EventsAndAnswerTest extends RunnerTestCase
             ->build();
         $seenPrevious = 'unset';
 
-        $outcome = $this->runner()->run($definition, new \stdClass(), null, $this->factory([
+        $outcome = $this->runner()->run($definition, new \stdClass(), $this->factory([
             self::A => static fn(ProcessContext $c): NodeResult => NodeResult::ok(['id' => 7]),
             self::B => static fn(ProcessContext $c): NodeResult => NodeResult::route(Route::OnTrue)->withEvents(new \stdClass()),
             self::C => static function (ProcessContext $c) use (&$seenPrevious): NodeResult {
@@ -166,7 +166,7 @@ class EventsAndAnswerTest extends RunnerTestCase
             ->node(self::B)->terminal()
             ->build();
 
-        $outcome = $this->runner()->run($definition, new \stdClass(), null, $this->factory([
+        $outcome = $this->runner()->run($definition, new \stdClass(), $this->factory([
             self::A => static fn(ProcessContext $c): NodeResult => NodeResult::route(Route::OnTrue),
             self::B => static fn(ProcessContext $c): NodeResult => NodeResult::reject(ResponseStatus::Conflict, 'p.clash', ['field' => 'x']),
         ]));
@@ -186,7 +186,7 @@ class EventsAndAnswerTest extends RunnerTestCase
             ->build();
         $seen = 'unset';
 
-        $outcome = $this->runner()->run($definition, new \stdClass(), null, $this->factory([
+        $outcome = $this->runner()->run($definition, new \stdClass(), $this->factory([
             self::A => static fn(ProcessContext $c): NodeResult => NodeResult::route(Route::OnTrue)->withEvents(new \stdClass()),
             self::B => static function (ProcessContext $c) use (&$seen): NodeResult {
                 $seen = $c->previous()?->data();

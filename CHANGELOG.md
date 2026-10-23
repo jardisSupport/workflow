@@ -4,6 +4,22 @@ All notable changes to `jardissupport/workflow` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [SemVer](https://semver.org/). Releases before 2.2.0 are listed in the git history and the GitHub releases.
 
+## [5.0.0] - Unreleased
+
+### BREAKING
+
+- The actor leaves the engine. In a generated process the actor is read in the node through the domain context (`$this->actor()`); the engine neither carries nor resolves it.
+  - `ProcessRunner::run(ProcessDefinition, object $input, ?object $actor, \Closure $nodeFactory, int $depth = 0)` becomes `run(ProcessDefinition, object $input, \Closure $nodeFactory, int $depth = 0)`.
+  - `ProcessContext::__construct(object $input, ?object $actor = null, int $depth = 0)` becomes `(object $input, int $depth = 0)`; `ProcessContext::actor()` is removed.
+  - `ProcessDefinition::actor(string)` and `ProcessDefinition::getActorClass()` are removed.
+  - `Data\RunRequest` (internal) loses its `$actor` property and parameter.
+
+### Migration
+
+- Drop the `$actor` argument (third position) from every `ProcessRunner::run()` call: `run($definition, $input, $actor, $factory, $depth)` becomes `run($definition, $input, $factory, $depth)`.
+- Drop `->actor(Class::class)` from process definitions.
+- A context class that extends `ProcessContext` and passes the actor to `parent::__construct()` passes `($input, $depth)` instead; code that read `$context->actor()` reads the actor from where the host provides it (in generated code `$this->actor()` of the domain context).
+
 ## [4.2.0] - 2026-10-21
 
 ### Added
