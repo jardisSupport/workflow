@@ -28,7 +28,7 @@ use JardisSupport\Workflow\Handler\Routing\Workflow;
  * the last node returned, a later node reads earlier data explicitly through
  * {@see ProcessContext::latest()} / {@see ProcessContext::all()}.
  *
- * The runner checks no input, resolves no actor, opens no transaction and logs nothing: that is the
+ * The runner checks no input, opens no transaction and logs nothing: that is the
  * business of the door in front of it. What a node throws runs through unchanged; the engine
  * answers a finished run only (200, or a 4xx a node rejected with).
  */
@@ -41,11 +41,10 @@ final class ProcessRunner
     public function run(
         ProcessDefinition $definition,
         object $input,
-        ?object $actor,
         \Closure $nodeFactory,
         int $depth = 0
     ): ProcessOutcome {
-        return $this->core()(RunRequest::of($definition, $input, $actor, $nodeFactory, $depth));
+        return $this->core()(RunRequest::of($definition, $input, $nodeFactory, $depth));
     }
 
     private function core(): ExecuteProcess

@@ -1,6 +1,6 @@
 # jardissupport/workflow
 
-Process engine for one request-response use case: a declared node graph (`ProcessDefinition`), run by `ProcessRunner`, answered as a typed `ProcessOutcome` (status, response, errors, events). The engine and nothing around it: input check, actor check, transaction, failure forms, envelope data and logging belong to the door in front of the runner (`jardissupport/response`). Details: `README.md`, skill `support-workflow`, https://docs.jardis.io/en/support/workflow
+Process engine for one request-response use case: a declared node graph (`ProcessDefinition`), run by `ProcessRunner`, answered as a typed `ProcessOutcome` (status, response, errors, events). The engine and nothing around it: input check, transaction, failure forms, envelope data and logging belong to the door in front of the runner (`jardissupport/response`). Details: `README.md`, skill `support-workflow`, https://docs.jardis.io/en/support/workflow
 
 ## Layout (`src/`)
 
@@ -21,5 +21,5 @@ Process engine for one request-response use case: a declared node graph (`Proces
 - The package publishes and dispatches nothing and opens no transaction: events travel on the `NodeResult`, the door commits and the caller publishes after the commit
 - A reject is not a route; routing is strict (an undeclared route throws `UnroutedStatusException`)
 - Tests are integration tests with the real runner (`new ProcessRunner()`); mock ports only, no assertion weakening
-- Validation, actor check, transaction, failure forms, envelope data and logging are not part of this package; they live in the door (`jardissupport/response`, `jardissupport/repository`)
+- Validation, transaction, failure forms, envelope data and logging are not part of this package; they live in the door (`jardissupport/response`, `jardissupport/repository`)
 - The domain core never imports workflow classes

@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace JardisSupport\Workflow\Data;
 
 /**
- * Read-only view of one process run: input, actor and the immutable chain of node results.
+ * Read-only view of one process run: input and the immutable chain of node results.
  *
  * The chain never changes in place - the engine hands every step a new context
  * ({@see self::withStep()}). The class is deliberately not final: generated processes
@@ -18,7 +18,6 @@ class ProcessContext
 
     public function __construct(
         private readonly object $input,
-        private readonly ?object $actor = null,
         private readonly int $depth = 0,
     ) {
     }
@@ -26,11 +25,6 @@ class ProcessContext
     public function input(): object
     {
         return $this->input;
-    }
-
-    public function actor(): ?object
-    {
-        return $this->actor;
     }
 
     /** Result of the most recently executed node. */

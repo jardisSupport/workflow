@@ -53,7 +53,6 @@ class ApplyRuleModeTest extends RunnerTestCase
         $outcome = $this->runner()->run(
             $this->definition(RuleMode::Decision),
             new \stdClass(),
-            null,
             $this->factory($this->nodes(ResponseStatus::RuleViolation), $built)
         );
 
@@ -69,7 +68,6 @@ class ApplyRuleModeTest extends RunnerTestCase
         $outcome = $this->runner()->run(
             $this->definition(RuleMode::Guard),
             new \stdClass(),
-            null,
             $this->factory($this->nodes(ResponseStatus::RuleViolation), $built)
         );
 
@@ -82,7 +80,6 @@ class ApplyRuleModeTest extends RunnerTestCase
         $outcome = $this->runner()->run(
             $this->definition(null),
             new \stdClass(),
-            null,
             $this->factory($this->nodes(ResponseStatus::RuleViolation))
         );
 
@@ -94,7 +91,6 @@ class ApplyRuleModeTest extends RunnerTestCase
         $outcome = $this->runner()->run(
             $this->definition(RuleMode::Decision),
             new \stdClass(),
-            null,
             $this->factory($this->nodes(ResponseStatus::NotFound))
         );
 

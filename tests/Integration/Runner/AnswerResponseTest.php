@@ -48,7 +48,7 @@ class AnswerResponseTest extends RunnerTestCase
             self::INNER => static fn(ProcessContext $c): NodeResult => NodeResult::ok(['foreign' => 1, 'status' => 'priced']),
         ]);
 
-        $outcome = $runner->run($definition, new \stdClass(), null, $this->factory([
+        $outcome = $runner->run($definition, new \stdClass(), $this->factory([
             self::CREATE => $this->create(),
             self::SUB => $this->subProcess($runner, $inner, $innerNodes),
         ]));
@@ -67,7 +67,7 @@ class AnswerResponseTest extends RunnerTestCase
             ->build();
         $event = new \stdClass();
 
-        $outcome = $this->runner()->run($definition, new \stdClass(), null, $this->factory([
+        $outcome = $this->runner()->run($definition, new \stdClass(), $this->factory([
             self::CREATE => $this->create(),
             self::NOTIFY => static fn(ProcessContext $c): NodeResult => NodeResult::route(Route::OnTrue)
                 ->withEvents($event),
@@ -85,7 +85,7 @@ class AnswerResponseTest extends RunnerTestCase
             ->node(self::CREATE)->terminal()
             ->build();
 
-        $outcome = $this->runner()->run($definition, new \stdClass(), null, $this->factory([
+        $outcome = $this->runner()->run($definition, new \stdClass(), $this->factory([
             self::CREATE => static fn(ProcessContext $c): NodeResult => NodeResult::ok([
                 'quoteNumber' => 'Q-1', 'status' => 'open', 'note' => 'rush', 'internalId' => 99,
             ]),
@@ -107,7 +107,7 @@ class AnswerResponseTest extends RunnerTestCase
         $this->expectException(ConstructionException::class);
         $this->expectExceptionMessage('needs a value for the required field "status" of process Quote');
 
-        $this->runner()->run($definition, new \stdClass(), null, $this->factory([
+        $this->runner()->run($definition, new \stdClass(), $this->factory([
             self::CREATE => static fn(ProcessContext $c): NodeResult => NodeResult::ok(['quoteNumber' => 'Q-1']),
         ]));
     }
@@ -123,7 +123,7 @@ class AnswerResponseTest extends RunnerTestCase
         $this->expectException(ConstructionException::class);
         $this->expectExceptionMessage('Process Quote declares the response class Quote\\DoesNotExist');
 
-        $this->runner()->run($definition, new \stdClass(), null, $this->factory([
+        $this->runner()->run($definition, new \stdClass(), $this->factory([
             self::CREATE => $this->create(),
         ]));
     }
@@ -172,7 +172,7 @@ class AnswerResponseTest extends RunnerTestCase
             ->node(self::NOTIFY)->terminal()
             ->build();
 
-        $outcome = $this->runner()->run($definition, new \stdClass(), null, $this->factory([
+        $outcome = $this->runner()->run($definition, new \stdClass(), $this->factory([
             self::CREATE => $this->create(),
             self::NOTIFY => static fn(ProcessContext $c): NodeResult => NodeResult::ok(['sent' => true]),
         ]));
@@ -190,7 +190,7 @@ class AnswerResponseTest extends RunnerTestCase
             ->node(self::NOTIFY)->terminal()
             ->build();
 
-        $outcome = $this->runner()->run($definition, new \stdClass(), null, $this->factory([
+        $outcome = $this->runner()->run($definition, new \stdClass(), $this->factory([
             self::CREATE => $this->create(),
             self::NOTIFY => static fn(ProcessContext $c): NodeResult => NodeResult::ok(['sent' => true]),
         ]));
@@ -211,7 +211,7 @@ class AnswerResponseTest extends RunnerTestCase
             ->build();
         $seen = null;
 
-        $outcome = $this->runner()->run($definition, new \stdClass(), null, $this->factory([
+        $outcome = $this->runner()->run($definition, new \stdClass(), $this->factory([
             self::CREATE => $this->create(),
             self::NOTIFY => static function (ProcessContext $c) use (&$seen): NodeResult {
                 $seen = $c->latest(self::CREATE)?->data();
@@ -232,7 +232,7 @@ class AnswerResponseTest extends RunnerTestCase
             ->node(self::CREATE)->rejects(ResponseStatus::NotFound, 'quote.notFound')->terminal()
             ->build();
 
-        $outcome = $this->runner()->run($definition, new \stdClass(), null, $this->factory([
+        $outcome = $this->runner()->run($definition, new \stdClass(), $this->factory([
             self::CREATE => static fn(ProcessContext $c): NodeResult => NodeResult::reject(
                 ResponseStatus::NotFound,
                 'quote.notFound',

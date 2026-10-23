@@ -83,7 +83,7 @@ abstract class RunnerTestCase extends TestCase
         ?Route $onReject = null
     ): callable {
         return function (ProcessContext $context) use ($runner, $inner, $innerNodes, $onReject): NodeResult {
-            $outcome = $runner->run($inner, new \stdClass(), null, $innerNodes, $context->depth() + 1);
+            $outcome = $runner->run($inner, new \stdClass(), $innerNodes, $context->depth() + 1);
 
             return (new MapResponse())($this->doorAnswer($outcome), $onReject);
         };

@@ -38,7 +38,7 @@ class MergedAnswerFlowTest extends RunnerTestCase
         $built = [];
         $event = new \stdClass();
 
-        $outcome = $this->runner()->run($definition, new \stdClass(), null, $this->factory([
+        $outcome = $this->runner()->run($definition, new \stdClass(), $this->factory([
             // the lookup finds nobody: the callee answers 422 without data, the decision turns it into onFalse
             self::FIND => static fn(ProcessContext $c): NodeResult => (new MapResponse())(
                 new FakeDomainResponse(422, ['messageKey' => 'customer.none_found'])

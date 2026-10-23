@@ -28,7 +28,7 @@ class ProcessRunnerTest extends RunnerTestCase
         $built = [];
 
         try {
-            $this->runner()->run($definition, new \stdClass(), null, $this->factory([
+            $this->runner()->run($definition, new \stdClass(), $this->factory([
                 self::A => static function (ProcessContext $c) use ($boom): NodeResult {
                     throw $boom;
                 },
@@ -45,7 +45,7 @@ class ProcessRunnerTest extends RunnerTestCase
     {
         $definition = ProcessDefinition::for('In', 'P')->node(self::A)->terminal()->build();
 
-        $outcome = $this->runner()->run($definition, new \stdClass(), null, $this->factory([
+        $outcome = $this->runner()->run($definition, new \stdClass(), $this->factory([
             self::A => static fn(ProcessContext $c): NodeResult => NodeResult::ok(['id' => 7]),
         ]));
 
