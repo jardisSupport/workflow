@@ -189,7 +189,8 @@ $rejected->response();   // empty object, the failure form is the door's busines
 |--------|--------|
 | `ProcessDefinition::for(string $inputClass, string $name)` | Start a definition (static); empty arguments throw `ConstructionException` |
 | `context(string $contextClass)` | Context class of the run, must extend `ProcessContext` (default: `ProcessContext`) |
-| `answer(Answer $answer)` | Form of the response of a successful run: `Answer::LastNode` (default) or `Answer::Merged` |
+| `answerFrom(array ...$entries)` | Answer of a successful run from named entries of the end of the run (candidate node ids, the last executed wins), see "Answer of a run"; not with `Answer::Merged`, `answerResponse()` or a node `response()` |
+| `answer(Answer $answer)` | **Deprecated** (use `answerFrom()`). Form of the response of a successful run: `Answer::LastNode` (default) or `Answer::Merged` |
 | `loopLimit(int $loopLimit)` | Maximum node steps of one run (default `ProcessDefinition::DEFAULT_LOOP_LIMIT` = 100, minimum 1) |
 | `ruleMode(string $node, RuleMode $mode)` | `RuleMode::Guard` or `RuleMode::Decision` for a rule node |
 | `node(string $node)` | Declare a node and make it the current one |
@@ -197,13 +198,13 @@ $rejected->response();   // empty object, the failure form is the door's busines
 | `terminal(Route ...$routes)` | Terminal end for the given routes (none given: `onTrue`) |
 | `rejects(ResponseStatus $status, string $messageKey)` | Declare a 4xx the current node may reject with and the message key it answers for that status (non-4xx throws) |
 | `input(string $property)` | Name the process input property that feeds the current node; its 400 rejects answer field paths below it |
-| `response(string $responseClass, string ...$fields)` | Typed answer of the current node, see below |
-| `answerResponse(string $responseClass, string ...$fields)` | Typed answer of the whole process, only with `Answer::Merged`, see "Answer of a run" |
-| `build()` | Validate the graph (unknown targets, unknown rule-mode node) and freeze |
+| `response(string $responseClass, string ...$fields)` | **Deprecated** (use `MapResponseInto` in the node). Typed answer of the current node, see below |
+| `answerResponse(string $responseClass, string ...$fields)` | **Deprecated** (use `answerFrom()`). Typed answer of the whole process, only with `Answer::Merged`, see "Answer of a run" |
+| `build()` | Validate the graph (unknown targets, unknown rule-mode node, invalid `answerFrom()`) and freeze |
 
-Declarations for the door, which reads them and acts on them - the engine itself ignores them: `transactional(bool)` (default on), `validate(string $validatorClass)`, `requires(string ...$requires)`.
+Declarations for the door, which reads them and acts on them - the engine itself ignores them: `transactional(bool)` (default on); `validate(string $validatorClass)` and `requires(string ...$requires)` are deprecated (validation belongs to the builder).
 
-Getters: `getInputClass()`, `getName()`, `getContextClass()`, `getAnswer()`, `isTransactional()`, `getValidatorClass()`, `getRequires()`, `getLoopLimit()`, `getRuleMode($node)`, `getRejects($node)`, `getInput($node)`, `getResponse($node)`, `getResponseClass($node)`, `getAnswerResponseClass()`, `getAnswerResponse()`, `isBuilt()`.
+Getters: `getInputClass()`, `getName()`, `getContextClass()`, `getAnswer()`, `isTransactional()`, `getValidatorClass()`, `getRequires()`, `getLoopLimit()`, `getRuleMode($node)`, `getRejects($node)`, `getInput($node)`, `getResponse($node)`, `getResponseClass($node)`, `getAnswerResponseClass()`, `getAnswerResponse()`, `getAnswerFrom()`, `isBuilt()`.
 
 **`response(class, fields...)`**: the data array of the node is turned into an object of `class` through its constructor, with named arguments. The fields name the subset of constructor parameters taken from the data (none named: all). A required parameter without a value, or an unknown class, throws a `ConstructionException`. Only an array result of a routed node is converted; a node without a declaration keeps its data.
 
@@ -279,6 +280,10 @@ $result->messageKey(); // ''
 $result->context();    // ['sku' => 'Z-9']
 ```
 
+### Typed reference of a call (`MapResponseInto`)
+
+`MapResponseInto` maps the answer of a call like `MapResponse` (status mapping, Domain events, reject, `$onReject`) and turns the data of a 2xx into an object of a class: `(new MapResponseInto())($response, ReferenceClass::class, $onReject)`. A class with a constructor is built through it (`ConstructResponse`); a class **without** one is filled through its **public properties** - keys the class does not know (`@type`, `id`) fall away. A missing key (a property with a default needs none), a value of the wrong type, a `readonly` property, an unknown or not instantiable class throws a `ConstructionException`. A 4xx, the `$onReject` route and a 5xx are exactly what `MapResponse` answers.
+
 ### Sub-process nodes
 
 A node runs an inner process one level deeper and maps the answer of the inner **door** - a `DomainResponseInterface` - with `MapResponse`: events travel up, an inner 4xx is rejected again with the same status, or routed with `$onReject`. The engine knows no sub-process: the inner run is a `run()` with `depth + 1`, the door around it builds the answer.
@@ -332,6 +337,23 @@ $outcome = $runner->run($decision, new PlaceOrder('ACME', 500), null, static fn(
 ---
 
 ## Answer of a run
+
+**Answer from the end (`answerFrom`).** `answerFrom(array ...$entries)` names what the answer of a successful run is made of. Each entry is a list of node ids - the candidates for that entry; at the end of the run the **last executed** step of any candidate gives the entry (several nodes may give the same kind of answer, the one that ran last wins). The data of a step is flat (an array as it is, an object by its public properties, no data adds no field); the entries are united into one object. The package knows no field name. Not declared: `getAnswerFrom()` is `null` and the answer is the one of `answer()` below; declared without entry: an empty answer. `build()` throws a `ConstructionException` for an empty entry, an unknown node id and a mix with `Answer::Merged`, `answerResponse()` or a node `response()`. At run time an entry no executed step gives, a list or a scalar as step data, or the same field name from two entries throws a `ConstructionException`. A reject answers as before.
+
+```php
+$definition = ProcessDefinition::for(PlaceOrder::class, 'PlaceOrder')
+    ->answerFrom([Reserve::class, ReserveFallback::class], [Quote::class])   // two entries
+    ->node(Reserve::class)->onTrue(Quote::class)->onFalse(ReserveFallback::class)
+    ->node(ReserveFallback::class)->onTrue(Quote::class)
+    ->node(Quote::class)->onTrue(Notify::class)
+    ->node(Notify::class)->terminal()                                         // not part of the answer
+    ->build();
+// response: the data of the reservation that ran (the last of the two candidates) united with the quote data
+```
+
+A value that is not an array or an object travels in a one-field array (`NodeResult::ok(['active' => true])`).
+
+**Deprecated forms.** `answer(Answer)`, `answerResponse()` and the node `response()` are `@deprecated` since 5.1 (behaviour unchanged); the section below describes them as they work.
 
 The form of the response of a successful run is declared per process with `answer(Answer)`; the status is 200 and `errors()` is empty.
 
