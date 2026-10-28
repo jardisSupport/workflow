@@ -1,0 +1,20 @@
+{
+    "status": 400,
+    "data": {
+        "@type": "validation",
+        "fields": [
+            {
+                "field": "arrivedOn",
+                "reason": "type",
+                "message": "Field has an invalid type.",
+                "messageKey": "validation.type"
+            },
+            {
+                "field": "weight",
+                "reason": "type",
+                "message": "Field has an invalid type.",
+                "messageKey": "validation.type"
+            }
+        ]
+    }
+}

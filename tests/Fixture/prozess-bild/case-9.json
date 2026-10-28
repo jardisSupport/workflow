@@ -1,0 +1,23 @@
+{
+    "status": 200,
+    "data": {
+        "@type": "endsOnDatetimeAndRows",
+        "takenAt": "2026-10-28T09:00:00+00:00",
+        "parcels": [
+            {
+                "identifier": "0190a000-0000-7000-8000-00000000000a",
+                "label": "L-1",
+                "status": "registered",
+                "weight": 12,
+                "scopeKey": "scope-a"
+            },
+            {
+                "identifier": "0190a000-0000-7000-8000-00000000000b",
+                "label": "L-2",
+                "status": "registered",
+                "weight": 7,
+                "scopeKey": "scope-a"
+            }
+        ]
+    }
+}

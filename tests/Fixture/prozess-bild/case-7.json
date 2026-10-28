@@ -1,0 +1,11 @@
+{
+    "status": 422,
+    "data": {
+        "@type": "ruleViolation",
+        "rule": "",
+        "messageKey": "parcel.on_hold",
+        "context": {
+            "status": "on_hold"
+        }
+    }
+}

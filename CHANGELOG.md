@@ -4,7 +4,7 @@ All notable changes to `jardissupport/workflow` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [SemVer](https://semver.org/). Releases before 2.2.0 are listed in the git history and the GitHub releases.
 
-## [5.1.0] - unreleased
+## [5.1.0] - 2026-10-28
 
 ### Added
 
