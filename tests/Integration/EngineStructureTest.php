@@ -35,7 +35,9 @@ class EngineStructureTest extends TestCase
         'Handler\\Loop\\GuardLoop',
         'Handler\\Node\\ApplyRuleMode',
         'Handler\\Node\\MapResponse',
+        'Handler\\Node\\MapResponseInto',
         'Handler\\Node\\ResolveNode',
+        'Handler\\Outcome\\BuildAnswer',
         'Handler\\Outcome\\BuildOutcome',
         'Handler\\Outcome\\ExecuteProcess',
         'Handler\\Routing\\Workflow',
@@ -57,7 +59,7 @@ class EngineStructureTest extends TestCase
         sort($documented);
 
         $this->assertSame($documented, $found);
-        $this->assertCount(27, $found);
+        $this->assertCount(29, $found);
         foreach (self::DOCUMENTED as $class) {
             $reflection = new \ReflectionClass('JardisSupport\\Workflow\\' . $class);
             $this->assertSame(

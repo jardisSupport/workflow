@@ -1,6 +1,6 @@
 ---
 name: support-workflow
-description: jardissupport/workflow 5.0 - the process engine for one request-response use case, and nothing around it. Declare a node graph with ProcessDefinition, run it with ProcessRunner (no constructor), get a typed ProcessOutcome; NodeResult (ok, route, reject, withEvents), ProcessContext, answer form Answer (LastNode, Merged), MapResponse for call and sub-process nodes, reject outcome (status, messageKey, context, errors), loops. Validation, transaction, failure forms, envelope data and logging are the door's business (jardissupport/response). Use when working with ProcessRunner, ProcessDefinition, NodeResult, ProcessContext, Answer, MapResponse or jardissupport/workflow.
+description: jardissupport/workflow 5.0 - the process engine for one request-response use case, and nothing around it. Declare a node graph with ProcessDefinition, run it with ProcessRunner (no constructor), get a typed ProcessOutcome; NodeResult (ok, route, reject, withEvents), ProcessContext, answer from the end of the run (answerFrom, BuildAnswer), deprecated answer form Answer (LastNode, Merged), MapResponse and MapResponseInto (typed reference) for call and sub-process nodes, reject outcome (status, messageKey, context, errors), loops. Validation, transaction, failure forms, envelope data and logging are the door's business (jardissupport/response). Use when working with ProcessRunner, ProcessDefinition, NodeResult, ProcessContext, Answer, answerFrom, MapResponse, MapResponseInto or jardissupport/workflow.
 user-invocable: false
 zone: post-active
 persona: C
@@ -9,11 +9,11 @@ next: [generated-code-workflow-api, support-response]
 ---
 
 # WORKFLOW_COMPONENT_SKILL
-> `jardissupport/workflow` 5.0 | NS: `JardisSupport\Workflow` | PHP 8.3+ | requires `jardissupport/contracts` ^2.12 only
+> `jardissupport/workflow` 5.1 | NS: `JardisSupport\Workflow` | PHP 8.3+ | requires `jardissupport/contracts` ^2.12 only
 
 ## Usage essentials
 
-**Trigger:** ProcessRunner, ProcessDefinition, NodeResult, ProcessContext, ProcessOutcome, Answer, Answer::Merged, MapResponse, RuleMode, LoopLimitExceededException, UnroutedStatusException.
+**Trigger:** ProcessRunner, ProcessDefinition, NodeResult, ProcessContext, ProcessOutcome, Answer, Answer::Merged, answerFrom, getAnswerFrom, BuildAnswer, MapResponse, MapResponseInto, RuleMode, LoopLimitExceededException, UnroutedStatusException.
 
 ```
 ProcessRunner::run($definition, $input, $nodeFactory, int $depth = 0)
@@ -31,7 +31,7 @@ No input check, no transaction, no logging, no failure forms in the engine: they
 | Route | `Route::OnTrue/OnFalse/OnSkip/OnTimeout/OnCancel/OnExit`; no data on the edge |
 | Reject | `NodeResult::reject(4xx, ...)`: ends the run, the outcome carries status, messageKey, context, errors. Not a route |
 | End | `terminal()` = a route mapped to `null` |
-| Answer | `answer(Answer::LastNode)` (default) = data of the last step, `answer(Answer::Merged)` = data of all steps united |
+| Answer | `answerFrom([nodes...], ...)` = named entries from the end of the run (the last executed candidate of each entry gives it, entries united). Deprecated since 5.1: `answer(Answer::LastNode)` (default) = data of the last step, `answer(Answer::Merged)` = data of all steps united |
 
 ```php
 $definition = ProcessDefinition::for(PlaceOrder::class, 'PlaceOrder')   // input class, name
@@ -53,18 +53,23 @@ $outcome->events();   // the door publishes these AFTER the commit
 | Class | Entry points |
 |-------|--------------|
 | `ProcessRunner` | `final`, no constructor; `run(definition, input, nodeFactory, int $depth = 0): ProcessOutcome` (`depth` = depth of the calling run + 1 for a sub-process) |
-| `ProcessDefinition` (`Data/ProcessDefinition.php`) | `for(inputClass, name)`, `context`, `answer(Answer)` (getter `getAnswer()`), `loopLimit(int)` (default 100), `ruleMode(node, RuleMode)`, `node`, `input(property)` (getter `getInput(node)`), `onTrue/onFalse/onSkip/onTimeout/onCancel/onExit(?target)`, `terminal(Route ...)`, `rejects(ResponseStatus, messageKey)`, `response(class, fields...)`, `answerResponse(class, fields...)` (getters `getAnswerResponseClass()`/`getAnswerResponse()`), `build()`; declarations only the door reads: `transactional(bool)`, `validate`, `requires(...)` |
-| `Answer` (enum) | `LastNode` (`'lastNode'`), `Merged` (`'merged'`) |
+| `ProcessDefinition` (`Data/ProcessDefinition.php`) | `for(inputClass, name)`, `context`, `answerFrom(array ...$entries)` (getter `getAnswerFrom(): ?array`, `null` = not declared), `answer(Answer)` (deprecated; getter `getAnswer()`), `loopLimit(int)` (default 100), `ruleMode(node, RuleMode)`, `node`, `input(property)` (getter `getInput(node)`), `onTrue/onFalse/onSkip/onTimeout/onCancel/onExit(?target)`, `terminal(Route ...)`, `rejects(ResponseStatus, messageKey)`, `response(class, fields...)` (deprecated), `answerResponse(class, fields...)` (deprecated; getters `getAnswerResponseClass()`/`getAnswerResponse()`), `build()`; declarations only the door reads: `transactional(bool)`, `validate` and `requires(...)` (both deprecated: validation is the builder's) |
+| `Answer` (enum, deprecated) | `LastNode` (`'lastNode'`), `Merged` (`'merged'`) |
+| `BuildAnswer` (`Handler/Outcome`) | `__invoke(ProcessContext, array $entries): object`: per entry the LAST step in `chain()` of any candidate node, flat data (array / `get_object_vars` / none), united; no executed candidate, a list or scalar as data, or a field name twice -> `ConstructionException`. Used by `BuildOutcome` when `getAnswerFrom() !== null` |
 | `NodeResult` | `ok(array\|object)`, `route(Route, data = null)`, `reject(status, messageKey, context = [], errors = [])`, `withEvents(object ...)`; readers `takenRoute data isRejected status messageKey context errors events` |
 | `ProcessContext` (not final) | `input previous latest(node) all(node) iteration(node) chain depth` |
 | `ProcessOutcome` | `status response errors events messageKey context`, `isFailed()` (status >= 400), `withResponse(object): self` (a copy with another answer, every other field unchanged; the outcome stays immutable) |
 | `MapResponse` | `__invoke(DomainResponseInterface, ?Route $onReject = null): NodeResult` (2xx ok + the Domain events of the callee flattened (Internal events stay behind); 4xx reject with the callee's plain context - `@type` dropped, inner `context` lifted, 400 `fields` / 409 `reason aggregate violated` / 422 `rule` kept; callee key only for 422; other 4xx e.g. 401/403: data unchanged as context; `$onReject` routes a 4xx instead; else throws: a 5xx a `CalleeFailureException` carrying the marker `ReportedFailureExceptionInterface`, any other status a plain `\RuntimeException`) |
 
+| `MapResponseInto` (`Handler/Node`) | `__construct(MapResponse $map = new MapResponse())`, `__invoke(DomainResponseInterface, string $into, ?Route $onReject = null): NodeResult`: everything of `MapResponse` (events, 4xx reject, `$onReject`, 5xx throws); a 2xx becomes an object of `$into`: class with constructor -> `ConstructResponse`; without -> its PUBLIC properties (iterated on the class side: `@type`/`id` and other extra keys fall away; a property without default needs a key); missing key, wrong type (also at a constructor), `readonly` property, unknown or not instantiable class -> `ConstructionException` |
+
 ## Full reference
+
+**Answer from the end (5.1).** `answerFrom([A, B], [C])`: two entries; entry 1 is given by the LAST executed step of `A` or `B` (several candidates = several nodes that give the same kind of answer; the declared order does not matter, the executed order does), entry 2 by the last step of `C`. Data flat (`array` as is, object by `get_object_vars`, `null` no field), united in one object; the package knows no field name. `getAnswerFrom()`: `null` = not declared, `[]` = declared without entries (empty answer). `build()` throws `ConstructionException` for an empty entry `[]`, an unknown node id, and a mix with `Answer::Merged`, `answerResponse()` or a node `response()` (a node `response()` would hydrate the data beforehand). Reject unchanged. A scalar needs a carrier (`NodeResult::ok(['active' => true])`). Replaces the deprecated `answer()` / `answerResponse()` / node `response()`.
 
 **Context inheritance (W4).** `ProcessContext` is not `final`: generated processes extend it with typed getters over `latest()`/`all()`; named by `context()`, otherwise `run()` throws `ConstructionException` (`CreateContext.php:23`). The chain is immutable (`withStep` is engine-internal). Everything else in the package is `final`.
 
-**Answer of a run.** `LastNode`: the data of the last step; a last step without data answers an empty object; nothing is handed on from earlier steps (read them with `latest($node)` / `all($node)`). `Merged`: the data of all executed steps in run order (loop passes included), the later step wins on the same field name; `null` and `[]` add no field, an object adds its public properties (`get_object_vars`), a non-empty list throws `ConstructionException` (`Handler/Outcome/BuildOutcome.php`, `merged`). With `answerResponse(class, fields...)` (only `Merged`, else `build()` throws) the union is projected onto the constructor fields of the class (none named = all; others fall away; missing required field or unknown class -> `ConstructionException`) - independent of kind and data of the last node; a node `response()` class on a node that ends the run is then not applied (`Context/HydrateResponse.php`, `Context/ConstructResponse.php`). A reject is unaffected by the answer form.
+**Answer of a run (deprecated forms).** `LastNode`: the data of the last step; a last step without data answers an empty object; nothing is handed on from earlier steps (read them with `latest($node)` / `all($node)`). `Merged`: the data of all executed steps in run order (loop passes included), the later step wins on the same field name; `null` and `[]` add no field, an object adds its public properties (`get_object_vars`), a non-empty list throws `ConstructionException` (`Handler/Outcome/BuildOutcome.php`, `merged`). With `answerResponse(class, fields...)` (only `Merged`, else `build()` throws) the union is projected onto the constructor fields of the class (none named = all; others fall away; missing required field or unknown class -> `ConstructionException`) - independent of kind and data of the last node; a node `response()` class on a node that ends the run is then not applied (`Context/HydrateResponse.php`, `Context/ConstructResponse.php`). A reject is unaffected by the answer form.
 
 **Reject in the outcome.** Status = the 4xx, empty `response()`, `errors()` of the reject, no events, `messageKey()` = the key the node declared with `rejects(status, key)`, else the one the reject names, `context()` = the reject context. With `input(property)` on the node, a 400 reject prefixes its `fields[].field` with `<property>.`; other statuses unchanged (`BuildOutcome.php:45-46`, `prefixed`). The failure form and the wire envelope are built by the door.
 
@@ -96,6 +101,8 @@ $outcome->events();   // the door publishes these AFTER the commit
 | 12 | `MapResponse` carries a callee message key only for 422 (400/404/409: only the key declared with `rejects()` reaches the outcome); a 5xx throws a `CalleeFailureException` (marker: cause already reported) even with `$onReject` | `Handler/Node/MapResponse.php` |
 | 13 | `input(property)` prefixes only the `fields` of a 400 reject of its node; a reject without `fields` or with another status stays unchanged | `Handler/Outcome/BuildOutcome.php:85` |
 | 14 | `answerResponse()` only with `Answer::Merged` (checked at `build()`, any call order); it types the PROCESS answer, `response()` types one NODE; mixing them up types the wrong thing | `Data/ProcessDefinition.php` (`build`), `Outcome/BuildOutcome.php` (`mergedData`) |
+| 15 | `answerFrom()` is refused at `build()` with `Answer::Merged`, `answerResponse()` or a node `response()`; an entry no executed step gives, a list/scalar as step data and a field name given twice throw `ConstructionException` at the end of the run | `Data/ProcessDefinition.php` (`assertAnswerFrom`), `Outcome/BuildAnswer.php` |
+| 16 | `MapResponseInto` without a constructor fills only PUBLIC properties; a `readonly` property or a missing key (no default) throws `ConstructionException`, never a default `''`; a 4xx is exactly `MapResponse`'s answer (the object is built for a 2xx only, also with `$onReject = OnTrue`) | `Handler/Node/MapResponseInto.php` |
 
 ## Layer rules
 

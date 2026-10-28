@@ -5,8 +5,8 @@ Process engine for one request-response use case: a declared node graph (`Proces
 ## Layout (`src/`)
 
 - `ProcessRunner.php` — composition only, no constructor (`new ProcessRunner()`), `run(…, int $depth = 0)`: the core (`CreateContext`, `Workflow` engine, `BuildOutcome`) with the node decorators (`GuardLoop`, `CollectEvents`, `HydrateResponse`, `ApplyRuleMode`); what a node throws leaves `run()` unchanged
-- `Data/` — `Answer` (`LastNode`, `Merged`), `ProcessDefinition`, `ProcessContext`, `NodeResult`, `Route`, `RuleMode`, `ProcessOutcome` (status, response, errors, events, message key and context of a node reject), `RunRequest`, `WorkflowConfig`, `Builder/WorkflowConfigBuilder`
-- `Handler/` — one closure class per concern with exactly one public entry point (`__invoke`): `Events/`, `Loop/`, `Node/` (`MapResponse`, `ResolveNode`, `ApplyRuleMode`), `Outcome/`, `Routing/`, `Context/` (`CreateContext`, `HydrateResponse`, `ConstructResponse`)
+- `Data/` — `Answer` (`LastNode`, `Merged`; deprecated since 5.1, use `ProcessDefinition::answerFrom()`), `ProcessDefinition`, `ProcessContext`, `NodeResult`, `Route`, `RuleMode`, `ProcessOutcome` (status, response, errors, events, message key and context of a node reject), `RunRequest`, `WorkflowConfig`, `Builder/WorkflowConfigBuilder`
+- `Handler/` — one closure class per concern with exactly one public entry point (`__invoke`): `Events/`, `Loop/`, `Node/` (`MapResponse`, `MapResponseInto`, `ResolveNode`, `ApplyRuleMode`), `Outcome/` (`BuildOutcome`, `BuildAnswer`, `ExecuteProcess`), `Routing/`, `Context/` (`CreateContext`, `HydrateResponse`, `ConstructResponse`)
 - `Exception/` — `WorkflowException` base, `CalleeFailureException` (final, `RuntimeException` with the marker `ReportedFailureExceptionInterface`: `MapResponse` throws it on a 5xx), `ConstructionException`, `LoopLimitExceededException`, `UnroutedStatusException`
 
 ## Commands (always `make`)

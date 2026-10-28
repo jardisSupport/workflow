@@ -1,0 +1,15 @@
+{
+    "status": 409,
+    "data": {
+        "@type": "concurrencyConflict",
+        "reason": "duplicate",
+        "aggregate": "Parcel",
+        "context": {
+            "identifier": "0190a000-0000-7000-8000-000000000103"
+        },
+        "violated": [
+            "label"
+        ],
+        "messageKey": "parcel.label_taken"
+    }
+}
