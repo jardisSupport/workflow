@@ -1,0 +1,10 @@
+{
+    "status": 404,
+    "data": {
+        "@type": "notFound",
+        "context": {
+            "label": "L-none"
+        },
+        "messageKey": "parcel.not_found"
+    }
+}

@@ -28,6 +28,8 @@ final class ProcessDefinition
     private int $loopLimit = self::DEFAULT_LOOP_LIMIT;
     private Answer $answer = Answer::LastNode;
     private ?string $answerResponseClass = null;
+    /** @var list<list<string>>|null */
+    private ?array $answerFrom = null;
     /** @var list<string> */
     private array $answerResponseFields = [];
     private ?string $currentNode = null;
@@ -77,6 +79,9 @@ final class ProcessDefinition
         return $this;
     }
 
+    /**
+     * @deprecated Validation of the input is done by the builder (the door, before the run); the engine ignores it.
+     */
     public function validate(string $validatorClass): self
     {
         $this->assertOpen();
@@ -85,6 +90,9 @@ final class ProcessDefinition
         return $this;
     }
 
+    /**
+     * @deprecated The requirements are checked by the builder (the door, before the run); the engine ignores them.
+     */
     public function requires(string ...$requires): self
     {
         $this->assertOpen();
@@ -95,6 +103,8 @@ final class ProcessDefinition
 
     /**
      * Declares the form of the answer of a successful run; without it the answer is the data of the last step.
+     *
+     * @deprecated Declare the answer with {@see self::answerFrom()}: it names the nodes that give the answer.
      */
     public function answer(Answer $answer): self
     {
@@ -113,6 +123,8 @@ final class ProcessDefinition
      * wherever in the chain this method is called. Not to be mixed up with {@see self::response()}, which
      * types the answer of one node.
      *
+     * @deprecated Declare the answer with {@see self::answerFrom()}; a typed callee answer is built by the node with
+     *             {@see \JardisSupport\Workflow\Handler\Node\MapResponseInto}.
      * @throws ConstructionException on an empty class name
      */
     public function answerResponse(string $responseClass, string ...$fields): self
@@ -125,6 +137,27 @@ final class ProcessDefinition
         }
         $this->answerResponseClass = $responseClass;
         $this->answerResponseFields = array_values($fields);
+
+        return $this;
+    }
+
+    /**
+     * Declares the answer of a successful run as named entries taken from the end of the run.
+     *
+     * Each entry is a list of node ids: the candidates that can give that entry. At the end of the run the
+     * LAST executed step of any candidate gives the entry (several candidates, e.g. two nodes that both
+     * give the same kind of answer, are allowed). The data of all entries is united; the package knows no field
+     * name. A reject answers as before.
+     *
+     * Without Answer::Merged, without {@see self::answerResponse()} and without a node {@see self::response()}.
+     * Calling it without an entry declares an empty answer.
+     *
+     * @param list<string> ...$entries
+     */
+    public function answerFrom(array ...$entries): self
+    {
+        $this->assertOpen();
+        $this->answerFrom = array_values($entries);
 
         return $this;
     }
@@ -245,6 +278,8 @@ final class ProcessDefinition
      * Declares the typed answer of the current node: the response class and the subset of its
      * constructor fields taken from the node data (none named = all fields).
      *
+     * @deprecated The node builds its typed answer itself with
+     *             {@see \JardisSupport\Workflow\Handler\Node\MapResponseInto}.
      * @throws ConstructionException on an empty class name
      */
     public function response(string $responseClass, string ...$fields): self
@@ -262,8 +297,9 @@ final class ProcessDefinition
     /**
      * Validates the graph and freezes the definition.
      *
-     * @throws ConstructionException on an empty graph, an unknown route target, an unknown rule-mode node or a
-     *                               process answer class without Answer::Merged
+     * @throws ConstructionException on an empty graph, an unknown route target, an unknown rule-mode node, a
+     *                               process answer class without Answer::Merged, or an invalid answerFrom()
+     *                               (empty entry, unknown node, mixed with another answer declaration)
      */
     public function build(): self
     {
@@ -276,6 +312,8 @@ final class ProcessDefinition
                 throw new ConstructionException(sprintf('ruleMode() names unknown node "%s"', $node));
             }
         }
+
+        $this->assertAnswerFrom();
 
         if ($this->answerResponseClass !== null && $this->answer !== Answer::Merged) {
             throw new ConstructionException(sprintf(
@@ -316,12 +354,17 @@ final class ProcessDefinition
         return $this->transactional;
     }
 
+    /**
+     * @deprecated Validation of the input is done by the builder (the door, before the run); the engine ignores it.
+     */
     public function getValidatorClass(): ?string
     {
         return $this->validatorClass;
     }
 
     /**
+     * @deprecated The requirements are checked by the builder (the door, before the run); the engine ignores them.
+     *
      * @return list<string>
      */
     public function getRequires(): array
@@ -329,12 +372,26 @@ final class ProcessDefinition
         return $this->requires;
     }
 
+    /**
+     * @deprecated Declare the answer with {@see self::answerFrom()}.
+     */
     public function getAnswer(): Answer
     {
         return $this->answer;
     }
 
     /**
+     * @return list<list<string>>|null the declared entries of the answer, each a list of candidate node ids
+     *                                 (empty = an empty answer); null when answerFrom() was not declared
+     */
+    public function getAnswerFrom(): ?array
+    {
+        return $this->answerFrom;
+    }
+
+    /**
+     * @deprecated Declare the answer with {@see self::answerFrom()}.
+     *
      * @return string|null the declared answer class of the process; null when the process declares none
      */
     public function getAnswerResponseClass(): ?string
@@ -343,6 +400,8 @@ final class ProcessDefinition
     }
 
     /**
+     * @deprecated Declare the answer with {@see self::answerFrom()}.
+     *
      * @return list<string>|null the declared field subset of the process answer (empty = all fields); null when the
      *                           process declares no answer class
      */
@@ -378,6 +437,9 @@ final class ProcessDefinition
     }
 
     /**
+     * @deprecated The node builds its typed answer itself with
+     *             {@see \JardisSupport\Workflow\Handler\Node\MapResponseInto}.
+     *
      * @return list<string>|null the declared field subset (empty = all fields); null when the node
      *                           declares no response
      */
@@ -387,6 +449,9 @@ final class ProcessDefinition
     }
 
     /**
+     * @deprecated The node builds its typed answer itself with
+     *             {@see \JardisSupport\Workflow\Handler\Node\MapResponseInto}.
+     *
      * @return string|null the declared response class; null when the node declares none
      */
     public function getResponseClass(string $node): ?string
@@ -403,6 +468,40 @@ final class ProcessDefinition
     public function config(): WorkflowConfig
     {
         return $this->config ?? throw new ConstructionException('The definition is not built yet');
+    }
+
+    /**
+     * @throws ConstructionException
+     */
+    private function assertAnswerFrom(): void
+    {
+        if ($this->answerFrom === null) {
+            return;
+        }
+        foreach ($this->answerFrom as $position => $entry) {
+            if ($entry === []) {
+                throw new ConstructionException(sprintf(
+                    'answerFrom() of process "%s": entry %d names no node',
+                    $this->name,
+                    $position + 1
+                ));
+            }
+            foreach ($entry as $node) {
+                if (!$this->configBuilder->hasNode($node)) {
+                    throw new ConstructionException(sprintf(
+                        'answerFrom() of process "%s" names unknown node "%s"',
+                        $this->name,
+                        $node
+                    ));
+                }
+            }
+        }
+        if ($this->answer === Answer::Merged || $this->answerResponseClass !== null || $this->responseClasses !== []) {
+            throw new ConstructionException(sprintf(
+                'answerFrom() of process "%s" cannot be mixed with Answer::Merged, answerResponse() or response()',
+                $this->name
+            ));
+        }
     }
 
     private function routeCurrent(Route $route, ?string $target): self

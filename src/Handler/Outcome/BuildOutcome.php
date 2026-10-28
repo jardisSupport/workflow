@@ -19,7 +19,9 @@ use JardisSupport\Workflow\Handler\Context\ConstructResponse;
  * Success: status 200, the response object in the form the process declared ({@see Answer}): the data of
  * the last step (a last step without data answers an empty object, nothing is handed on from earlier steps)
  * or the data of all steps united in run order, projected onto the answer class the process declares
- * ({@see ProcessDefinition::answerResponse()}) when it declares one; the events of all steps in execution order.
+ * ({@see ProcessDefinition::answerResponse()}) when it declares one, or the named entries from the end of the run
+ * when it declares {@see ProcessDefinition::answerFrom()} ({@see BuildAnswer}); the events of all steps in
+ * execution order.
  * Reject: only the status, the message key, the context and the errors of the rejecting step, an empty
  * response object, no events; the failure form is the door's business.
  * The message key is the one the node declared for that status ({@see ProcessDefinition::rejects()})
@@ -30,8 +32,9 @@ final class BuildOutcome
 {
     /**
      * @throws ConstructionException on a run without steps, data that is neither array nor object, a list
-     *                               as step data of a merged answer, or a declared process answer class that
-     *                               does not exist or lacks a required field
+     *                               as step data of a merged answer, a declared process answer class that
+     *                               does not exist or lacks a required field, or an answerFrom() entry that
+     *                               no executed step gives (or gives twice)
      */
     public function __invoke(ProcessContext $context, ?ProcessDefinition $definition = null): ProcessOutcome
     {
@@ -103,6 +106,11 @@ final class BuildOutcome
 
     private function response(ProcessContext $context, NodeResult $last, ?ProcessDefinition $definition): object
     {
+        $answerFrom = $definition?->getAnswerFrom();
+        if ($answerFrom !== null) {
+            return (new BuildAnswer())($context, $answerFrom);
+        }
+
         return match ($definition?->getAnswer() ?? Answer::LastNode) {
             Answer::LastNode => $this->lastData($last),
             Answer::Merged => $this->mergedData($context, $definition),

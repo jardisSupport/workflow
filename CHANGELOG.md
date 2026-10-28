@@ -4,6 +4,21 @@ All notable changes to `jardissupport/workflow` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [SemVer](https://semver.org/). Releases before 2.2.0 are listed in the git history and the GitHub releases.
 
+## [5.1.0] - 2026-10-28
+
+### Added
+
+- `ProcessDefinition::answerFrom(array ...$entries): self` / `getAnswerFrom(): ?array`: the answer of a successful run as named entries from the end of the run. An entry is a list of node ids (candidates, several nodes may give the same kind of answer); the LAST executed step of any candidate gives the entry, its data is flat (an array as it is, an object by its public properties, no data adds no field), the entries are united. The package knows no field name. `getAnswerFrom()` is `null` when not declared and `[]` for a declaration without entries (empty answer). `build()` throws a `ConstructionException` for an empty entry, an unknown node id, and a mix with `Answer::Merged`, `answerResponse()` or a node `response()`. A reject answers as before.
+- `Handler\Outcome\BuildAnswer` (closure, `(ProcessContext, array $entries): object`; an entry no executed step gives, a list or a scalar as step data, or the same field name from two entries throws a `ConstructionException`); `BuildOutcome` takes this branch when `getAnswerFrom() !== null`, before the `Answer` form. The enum `Answer` is not extended.
+- `Handler\Node\MapResponseInto` (`__invoke(DomainResponseInterface $response, string $into, ?Route $onReject = null): NodeResult`): the status mapping, the Domain events and the reject of `MapResponse` (injected, default instance), and the data of a 2xx as an object of `$into`: a class with a constructor is built by `ConstructResponse`, a class without one is filled through its public properties (iterated on the class side, so keys the class does not know such as `@type` or `id` fall away). A missing key (a property with a default needs none), a value of the wrong type, a `readonly` property, an unknown or not instantiable class throws a `ConstructionException`. 29 classes.
+
+### Deprecated
+
+- Everything the answer and the typed node answer used to be declared with; no behaviour changes, the replacement is named in each docblock:
+  - use `answerFrom()`: `answer()`, `getAnswer()`, the enum `Answer`, `answerResponse()`, `getAnswerResponseClass()`, `getAnswerResponse()`;
+  - use `MapResponseInto` in the node: `response()`, `getResponse()`, `getResponseClass()`;
+  - validation belongs to the builder (the door): `validate()`, `getValidatorClass()`, `requires()`, `getRequires()`.
+
 ## [5.0.0] - 2026-10-23
 
 ### BREAKING
