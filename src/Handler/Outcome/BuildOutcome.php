@@ -108,7 +108,14 @@ final class BuildOutcome
     {
         $answerFrom = $definition?->getAnswerFrom();
         if ($answerFrom !== null) {
-            return (new BuildAnswer())($context, $answerFrom);
+            $answer = (new BuildAnswer())($context, $answerFrom);
+            if (array_is_list($answerFrom)) {
+                return $answer;
+            }
+            /** @var array<string, string> $named the named form: node id => outcome name (not a list) */
+            $named = $answerFrom;
+
+            return (new MarkOutcome())($answer, (new FindOutcome())($context, $named));
         }
 
         return match ($definition?->getAnswer() ?? Answer::LastNode) {

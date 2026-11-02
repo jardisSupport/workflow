@@ -1,6 +1,6 @@
 ---
 name: support-workflow
-description: jardissupport/workflow 5.0 - the process engine for one request-response use case, and nothing around it. Declare a node graph with ProcessDefinition, run it with ProcessRunner (no constructor), get a typed ProcessOutcome; NodeResult (ok, route, reject, withEvents), ProcessContext, answer from the end of the run (answerFrom, BuildAnswer), deprecated answer form Answer (LastNode, Merged), MapResponse and MapResponseInto (typed reference) for call and sub-process nodes, reject outcome (status, messageKey, context, errors), loops. Validation, transaction, failure forms, envelope data and logging are the door's business (jardissupport/response). Use when working with ProcessRunner, ProcessDefinition, NodeResult, ProcessContext, Answer, answerFrom, MapResponse, MapResponseInto or jardissupport/workflow.
+description: jardissupport/workflow 5.2 - the process engine for one request-response use case, and nothing around it. Declare a node graph with ProcessDefinition, run it with ProcessRunner (no constructor), get a typed ProcessOutcome; NodeResult (ok, route, reject, withEvents), ProcessContext, answer from the end of the run (answerFrom, BuildAnswer), named outcomes (answerFrom map, @outcome, MarkOutcome, FindOutcome), deprecated answer form Answer (LastNode, Merged), MapResponse and MapResponseInto (typed reference) for call and sub-process nodes, reject outcome (status, messageKey, context, errors), loops. Validation, transaction, failure forms, envelope data and logging are the door's business (jardissupport/response). Use when working with ProcessRunner, ProcessDefinition, NodeResult, ProcessContext, Answer, answerFrom, MapResponse, MapResponseInto or jardissupport/workflow.
 user-invocable: false
 zone: post-active
 persona: C
@@ -9,11 +9,11 @@ next: [generated-code-workflow-api, support-response]
 ---
 
 # WORKFLOW_COMPONENT_SKILL
-> `jardissupport/workflow` 5.1 | NS: `JardisSupport\Workflow` | PHP 8.3+ | requires `jardissupport/contracts` ^2.12 only
+> `jardissupport/workflow` 5.2 | NS: `JardisSupport\Workflow` | PHP 8.3+ | requires `jardissupport/contracts` ^2.12 only
 
 ## Usage essentials
 
-**Trigger:** ProcessRunner, ProcessDefinition, NodeResult, ProcessContext, ProcessOutcome, Answer, Answer::Merged, answerFrom, getAnswerFrom, BuildAnswer, MapResponse, MapResponseInto, RuleMode, LoopLimitExceededException, UnroutedStatusException.
+**Trigger:** ProcessRunner, ProcessDefinition, NodeResult, ProcessContext, ProcessOutcome, Answer, Answer::Merged, answerFrom, getAnswerFrom, BuildAnswer, MarkOutcome, FindOutcome, @outcome, MapResponse, MapResponseInto, RuleMode, LoopLimitExceededException, UnroutedStatusException.
 
 ```
 ProcessRunner::run($definition, $input, $nodeFactory, int $depth = 0)
@@ -53,9 +53,11 @@ $outcome->events();   // the door publishes these AFTER the commit
 | Class | Entry points |
 |-------|--------------|
 | `ProcessRunner` | `final`, no constructor; `run(definition, input, nodeFactory, int $depth = 0): ProcessOutcome` (`depth` = depth of the calling run + 1 for a sub-process) |
-| `ProcessDefinition` (`Data/ProcessDefinition.php`) | `for(inputClass, name)`, `context`, `answerFrom(array ...$entries)` (getter `getAnswerFrom(): ?array`, `null` = not declared), `answer(Answer)` (deprecated; getter `getAnswer()`), `loopLimit(int)` (default 100), `ruleMode(node, RuleMode)`, `node`, `input(property)` (getter `getInput(node)`), `onTrue/onFalse/onSkip/onTimeout/onCancel/onExit(?target)`, `terminal(Route ...)`, `rejects(ResponseStatus, messageKey)`, `response(class, fields...)` (deprecated), `answerResponse(class, fields...)` (deprecated; getters `getAnswerResponseClass()`/`getAnswerResponse()`), `build()`; declarations only the door reads: `transactional(bool)`, `validate` and `requires(...)` (both deprecated: validation is the builder's) |
+| `ProcessDefinition` (`Data/ProcessDefinition.php`) | `for(inputClass, name)`, `context`, `answerFrom(array ...$entries)` (list entries, or ONE named entry `[Node::class => 'name']`; getter `getAnswerFrom(): ?array`, `null` = not declared, a named declaration returns the map `array<string, string>`), `answer(Answer)` (deprecated; getter `getAnswer()`), `loopLimit(int)` (default 100), `ruleMode(node, RuleMode)`, `node`, `input(property)` (getter `getInput(node)`), `onTrue/onFalse/onSkip/onTimeout/onCancel/onExit(?target)`, `terminal(Route ...)`, `rejects(ResponseStatus, messageKey)`, `response(class, fields...)` (deprecated), `answerResponse(class, fields...)` (deprecated; getters `getAnswerResponseClass()`/`getAnswerResponse()`), `build()`; declarations only the door reads: `transactional(bool)`, `validate` and `requires(...)` (both deprecated: validation is the builder's) |
 | `Answer` (enum, deprecated) | `LastNode` (`'lastNode'`), `Merged` (`'merged'`) |
 | `BuildAnswer` (`Handler/Outcome`) | `__invoke(ProcessContext, array $entries): object`: per entry the LAST step in `chain()` of any candidate node, flat data (array / `get_object_vars` / none), united; no executed candidate, a list or scalar as data, or a field name twice -> `ConstructionException`. Used by `BuildOutcome` when `getAnswerFrom() !== null` |
+| `MarkOutcome` (`Handler/Outcome`) | `KEY = '@outcome'`; `__invoke(object $answer, string $outcome): object`: the name becomes the FIRST property; an own step field of the same name loses, nothing is thrown. Same literal as `ProjectOutcome::KEY` of `jardissupport/response` (no shared port) |
+| `FindOutcome` (`Handler/Outcome`) | `__invoke(ProcessContext, array $named): string`: the name of the candidate that ran last; none ran -> `ConstructionException`. Used with `MarkOutcome` by `BuildOutcome` for a named declaration |
 | `NodeResult` | `ok(array\|object)`, `route(Route, data = null)`, `reject(status, messageKey, context = [], errors = [])`, `withEvents(object ...)`; readers `takenRoute data isRejected status messageKey context errors events` |
 | `ProcessContext` (not final) | `input previous latest(node) all(node) iteration(node) chain depth` |
 | `ProcessOutcome` | `status response errors events messageKey context`, `isFailed()` (status >= 400), `withResponse(object): self` (a copy with another answer, every other field unchanged; the outcome stays immutable) |
@@ -66,6 +68,8 @@ $outcome->events();   // the door publishes these AFTER the commit
 ## Full reference
 
 **Answer from the end (5.1).** `answerFrom([A, B], [C])`: two entries; entry 1 is given by the LAST executed step of `A` or `B` (several candidates = several nodes that give the same kind of answer; the declared order does not matter, the executed order does), entry 2 by the last step of `C`. Data flat (`array` as is, object by `get_object_vars`, `null` no field), united in one object; the package knows no field name. `getAnswerFrom()`: `null` = not declared, `[]` = declared without entries (empty answer). `build()` throws `ConstructionException` for an empty entry `[]`, an unknown node id, and a mix with `Answer::Merged`, `answerResponse()` or a node `response()` (a node `response()` would hydrate the data beforehand). Reject unchanged. A scalar needs a carrier (`NodeResult::ok(['active' => true])`). Replaces the deprecated `answer()` / `answerResponse()` / node `response()`.
+
+**Named outcomes (5.2).** `answerFrom([A::class => 'done', B::class => 'done', C::class => 'other'])`: ONE entry mapping each candidate node (unique key) to the name of the outcome it ends the run with (a name may repeat). The candidate that ran last gives its data as in 5.1 and its name becomes the FIRST property `@outcome` of the answer (`MarkOutcome::KEY`); a node without data answers only the marker. The named entry is the only entry: a further entry next to it (named or list), a name that is not a non-empty string, a key that is no declared node -> `ConstructionException` at `build()`. A named candidate that did not run is no error; none ran -> `ConstructionException` (`FindOutcome`). The list form is unchanged: no name, no `@outcome`. A step field `@outcome` loses against the marker. `getAnswerFrom()` of a named declaration is the map as declared; tell it from the list form with `array_is_list()`. `BuildAnswer` keeps its 5.1 signature. 31 classes.
 
 **Context inheritance (W4).** `ProcessContext` is not `final`: generated processes extend it with typed getters over `latest()`/`all()`; named by `context()`, otherwise `run()` throws `ConstructionException` (`CreateContext.php:23`). The chain is immutable (`withStep` is engine-internal). Everything else in the package is `final`.
 
@@ -103,6 +107,7 @@ $outcome->events();   // the door publishes these AFTER the commit
 | 14 | `answerResponse()` only with `Answer::Merged` (checked at `build()`, any call order); it types the PROCESS answer, `response()` types one NODE; mixing them up types the wrong thing | `Data/ProcessDefinition.php` (`build`), `Outcome/BuildOutcome.php` (`mergedData`) |
 | 15 | `answerFrom()` is refused at `build()` with `Answer::Merged`, `answerResponse()` or a node `response()`; an entry no executed step gives, a list/scalar as step data and a field name given twice throw `ConstructionException` at the end of the run | `Data/ProcessDefinition.php` (`assertAnswerFrom`), `Outcome/BuildAnswer.php` |
 | 16 | `MapResponseInto` without a constructor fills only PUBLIC properties; a `readonly` property or a missing key (no default) throws `ConstructionException`, never a default `''`; a 4xx is exactly `MapResponse`'s answer (the object is built for a 2xx only, also with `$onReject = OnTrue`) | `Handler/Node/MapResponseInto.php` |
+| 17 | A named `answerFrom()` is the only entry of the declaration; mixing it with a list entry or a second entry is refused at `build()`; without a name the answer has no `@outcome` | `Data/ProcessDefinition.php` (`assertAnswerFrom`), `Outcome/MarkOutcome.php`, `Outcome/FindOutcome.php` |
 
 ## Layer rules
 
