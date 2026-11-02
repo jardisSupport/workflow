@@ -14,15 +14,37 @@ use JardisSupport\Workflow\Exception\ConstructionException;
  * Per entry the LAST executed step of any of its candidate nodes gives the entry; the data is flat: an array as it
  * is, an object by its public properties, no data adds no field. The entries are united into one object. The
  * package knows no field name: what the fields are called is the data of the steps.
+ *
+ * Named form (5.2): the ONE entry maps each candidate node to an outcome name; the candidate that ran last gives the
+ * fields of the answer as before. Its name is found by {@see FindOutcome}, the marker is set by {@see MarkOutcome}.
  */
 final class BuildAnswer
 {
     /**
-     * @param list<list<string>> $entries each entry a list of candidate node ids
+     * @param list<list<string>>|array<string, string> $entries list form: each entry a list of candidate node ids;
+     *                                                          named form: the one entry, node id => outcome name
      * @throws ConstructionException when an entry has no executed candidate, a step answered a list or a scalar,
      *                               or two entries give the same field name
      */
     public function __invoke(ProcessContext $context, array $entries): object
+    {
+        if (array_is_list($entries)) {
+            /** @var list<list<string>> $listed the list form (5.1): a list of candidate lists */
+            $listed = $entries;
+
+            return $this->united($context, $listed);
+        }
+        /** @var array<string, string> $named the one named entry, node id => outcome name (not a list) */
+        $named = $entries;
+
+        return $this->named($context, $named);
+    }
+
+    /**
+     * @param list<list<string>> $entries
+     * @throws ConstructionException
+     */
+    private function united(ProcessContext $context, array $entries): object
     {
         $answer = [];
         foreach ($entries as $position => $candidates) {
@@ -43,7 +65,19 @@ final class BuildAnswer
     }
 
     /**
-     * @param list<string> $candidates
+     * @param array<string, string> $named node id => outcome name
+     * @return object the fields of the candidate that ran last
+     * @throws ConstructionException
+     */
+    private function named(ProcessContext $context, array $named): object
+    {
+        $step = $this->lastStep($context, array_keys($named), 1);
+
+        return (object) $this->fields($step['node'], $step['data']);
+    }
+
+    /**
+     * @param list<int|string> $candidates
      * @return array{node: string, data: mixed}
      * @throws ConstructionException
      */

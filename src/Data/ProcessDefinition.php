@@ -28,7 +28,7 @@ final class ProcessDefinition
     private int $loopLimit = self::DEFAULT_LOOP_LIMIT;
     private Answer $answer = Answer::LastNode;
     private ?string $answerResponseClass = null;
-    /** @var list<list<string>>|null */
+    /** @var list<array<array-key, string>>|null the entries as declared (a named entry is a map node id => name) */
     private ?array $answerFrom = null;
     /** @var list<string> */
     private array $answerResponseFields = [];
@@ -149,10 +149,18 @@ final class ProcessDefinition
      * give the same kind of answer, are allowed). The data of all entries is united; the package knows no field
      * name. A reject answers as before.
      *
+     * Named form (5.2): ONE entry `[NodeA::class => 'outcomeName', NodeB::class => 'otherName']` that maps each
+     * candidate node (unique) to the name of the outcome it ends the run with (a name may repeat). The name of the
+     * candidate that ran last reaches the answer as its first property `@outcome`
+     * ({@see \JardisSupport\Workflow\Handler\Outcome\MarkOutcome::KEY}). The named entry is the only entry of the
+     * declaration: any further entry next to it, named or a list, is refused at build() with a ConstructionException.
+     * Without a name (list form, as in 5.1) the answer carries no `@outcome`.
+     *
      * Without Answer::Merged, without {@see self::answerResponse()} and without a node {@see self::response()}.
      * Calling it without an entry declares an empty answer.
      *
-     * @param list<string> ...$entries
+     * @param list<string>|array<string, string> ...$entries a list of candidate node ids, or one map
+     *                                                       node id => outcome name
      */
     public function answerFrom(array ...$entries): self
     {
@@ -381,12 +389,26 @@ final class ProcessDefinition
     }
 
     /**
-     * @return list<list<string>>|null the declared entries of the answer, each a list of candidate node ids
-     *                                 (empty = an empty answer); null when answerFrom() was not declared
+     * The declared answer entries. Two forms, told apart by `array_is_list()`:
+     *  - list form (5.1): `list<list<string>>`, each entry a list of candidate node ids (`[]` = an empty answer);
+     *  - named form (5.2): `array<string, string>`, the ONE named entry as declared, node id => outcome name.
+     *
+     * @return list<list<string>>|array<string, string>|null null when answerFrom() was not declared
      */
     public function getAnswerFrom(): ?array
     {
-        return $this->answerFrom;
+        if ($this->answerFrom === null) {
+            return null;
+        }
+        $first = $this->answerFrom[0] ?? null;
+        if (count($this->answerFrom) === 1 && $first !== null && $this->isNamed($first)) {
+            return $first;
+        }
+
+        /** @var list<list<string>> $entries a build()-checked declaration without a named entry */
+        $entries = $this->answerFrom;
+
+        return $entries;
     }
 
     /**
@@ -478,6 +500,13 @@ final class ProcessDefinition
         if ($this->answerFrom === null) {
             return;
         }
+        $named = array_filter($this->answerFrom, fn(array $entry): bool => $this->isNamed($entry));
+        if ($named !== [] && count($this->answerFrom) > 1) {
+            throw new ConstructionException(sprintf(
+                'answerFrom() of process "%s": a named entry is the only entry, it cannot be mixed with another entry',
+                $this->name
+            ));
+        }
         foreach ($this->answerFrom as $position => $entry) {
             if ($entry === []) {
                 throw new ConstructionException(sprintf(
@@ -486,8 +515,11 @@ final class ProcessDefinition
                     $position + 1
                 ));
             }
-            foreach ($entry as $node) {
-                if (!$this->configBuilder->hasNode($node)) {
+            if ($named !== []) {
+                $this->assertNamedEntry($entry);
+            }
+            foreach (array_keys($named !== [] ? $entry : array_flip($entry)) as $node) {
+                if (!$this->configBuilder->hasNode((string) $node)) {
                     throw new ConstructionException(sprintf(
                         'answerFrom() of process "%s" names unknown node "%s"',
                         $this->name,
@@ -502,6 +534,40 @@ final class ProcessDefinition
                 $this->name
             ));
         }
+    }
+
+    /**
+     * A named entry maps node ids (string keys) to outcome names (non-empty strings).
+     *
+     * @param array<array-key, mixed> $entry declared input, checked here
+     * @throws ConstructionException
+     */
+    private function assertNamedEntry(array $entry): void
+    {
+        foreach ($entry as $node => $name) {
+            if (!is_string($node) || !is_string($name) || $name === '') {
+                throw new ConstructionException(sprintf(
+                    'answerFrom() of process "%s": a named entry maps node ids to non-empty outcome names',
+                    $this->name
+                ));
+            }
+        }
+    }
+
+    /**
+     * An entry is named as soon as it has a string key (node id => outcome name); a plain list of node ids is not.
+     *
+     * @param array<array-key, mixed> $entry
+     */
+    private function isNamed(array $entry): bool
+    {
+        foreach (array_keys($entry) as $key) {
+            if (is_string($key)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function routeCurrent(Route $route, ?string $target): self

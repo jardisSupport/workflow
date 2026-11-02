@@ -119,4 +119,72 @@ class AnswerFromDefinitionTest extends TestCase
 
         $definition->answerFrom([self::A]);
     }
+
+    public function testANamedEntryIsKeptAsDeclared(): void
+    {
+        $definition = $this->graph()
+            ->answerFrom([self::A => 'done', self::B => 'done'])
+            ->node(self::A)->onTrue(self::B)
+            ->node(self::B)->terminal()
+            ->build();
+
+        $this->assertSame([self::A => 'done', self::B => 'done'], $definition->getAnswerFrom());
+    }
+
+    public function testANamedEntryNextToAListEntryIsRefused(): void
+    {
+        $definition = $this->graph()
+            ->answerFrom([self::A => 'done'], [self::B])
+            ->node(self::A)->onTrue(self::B)
+            ->node(self::B)->terminal();
+
+        $this->expectException(ConstructionException::class);
+        $this->expectExceptionMessage('named entry is the only entry');
+
+        $definition->build();
+    }
+
+    public function testTwoNamedEntriesAreRefused(): void
+    {
+        $definition = $this->graph()
+            ->answerFrom([self::A => 'one'], [self::B => 'two'])
+            ->node(self::A)->onTrue(self::B)
+            ->node(self::B)->terminal();
+
+        $this->expectException(ConstructionException::class);
+        $this->expectExceptionMessage('named entry is the only entry');
+
+        $definition->build();
+    }
+
+    public function testANamedEntryNamesTheNodesByKey(): void
+    {
+        $definition = $this->graph()->answerFrom([self::A => 'done', 'Node\\Missing' => 'x'])->node(self::A)->terminal();
+
+        $this->expectException(ConstructionException::class);
+        $this->expectExceptionMessage('unknown node "Node\\Missing"');
+
+        $definition->build();
+    }
+
+    public function testAMixedKeyEntryIsRefused(): void
+    {
+        $definition = $this->graph()->answerFrom([self::A => 'done', self::B])->node(self::A)->onTrue(self::B)
+            ->node(self::B)->terminal();
+
+        $this->expectException(ConstructionException::class);
+        $this->expectExceptionMessage('maps node ids to non-empty outcome names');
+
+        $definition->build();
+    }
+
+    public function testAnEmptyOutcomeNameIsRefused(): void
+    {
+        $definition = $this->graph()->answerFrom([self::A => ''])->node(self::A)->terminal();
+
+        $this->expectException(ConstructionException::class);
+        $this->expectExceptionMessage('maps node ids to non-empty outcome names');
+
+        $definition->build();
+    }
 }

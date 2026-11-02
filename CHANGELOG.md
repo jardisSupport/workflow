@@ -4,6 +4,14 @@ All notable changes to `jardissupport/workflow` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [SemVer](https://semver.org/). Releases before 2.2.0 are listed in the git history and the GitHub releases.
 
+## [5.2.0] - unreleased
+
+### Added
+
+- Named candidates in `ProcessDefinition::answerFrom()`: ONE entry `[Node::class => 'outcomeName', ...]` maps each candidate node (unique) to the name of the outcome it ends the run with (a name may repeat). The candidate that ran last gives the entry as before and its name reaches the answer as the FIRST property `@outcome`. The named entry is the only entry of the declaration: any further entry next to it, named or a list, is refused at `build()` with a `ConstructionException`, as is a name that is not a non-empty string or a key that is no declared node. The list form is unchanged (5.1): without a name the answer carries no `@outcome`. `getAnswerFrom()` returns the list form (`list<list<string>>`) as before and, for a named declaration, the map as declared (`array<string, string>`); the two are told apart by `array_is_list()`.
+- `Handler\Outcome\MarkOutcome` (closure, `(object $answer, string $outcome): object`): sets `@outcome` as the first property of the answer; its own marker wins over a step field of the same name (nothing is thrown). `MarkOutcome::KEY` = `'@outcome'`, the same literal as `ProjectOutcome::KEY` of `jardissupport/response` (no shared port, the two packages agree on the literal). `BuildOutcome` calls it for a named declaration.
+- `Handler\Outcome\FindOutcome` (closure, `(ProcessContext $context, array $named): string`): the outcome name of the candidate that ran last; throws `ConstructionException` when none ran. `BuildAnswer` keeps its 5.1 signature. 31 classes.
+
 ## [5.1.0] - 2026-10-28
 
 ### Added
