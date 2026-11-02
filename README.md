@@ -21,6 +21,7 @@ Process engine for one request-response use case in PHP. A process is a declared
 - **Reject instead of route** — `NodeResult::reject()` ends the run at once with a 4xx; it is not a route
 - **Two answer forms** — `Answer::LastNode` (default: the data of the last step) or `Answer::Merged` (the data of all steps united), declared per process
 - **Typed answers** — every node can declare a response class
+- **Named outcomes** — `answerFrom([Node::class => 'outcomeName', ...])` marks the answer with the outcome that ended the run, as its first property `@outcome`
 - **Events at the result** — events travel with the `NodeResult`; the caller publishes them after the commit
 - **Immutable chain** — `ProcessContext` exposes input and the results of the nodes run so far
 - **Strict routing** — a route without a declared key raises `UnroutedStatusException`; an explicit `null` target is a declared end
@@ -189,7 +190,7 @@ $rejected->response();   // empty object, the failure form is the door's busines
 |--------|--------|
 | `ProcessDefinition::for(string $inputClass, string $name)` | Start a definition (static); empty arguments throw `ConstructionException` |
 | `context(string $contextClass)` | Context class of the run, must extend `ProcessContext` (default: `ProcessContext`) |
-| `answerFrom(array ...$entries)` | Answer of a successful run from named entries of the end of the run (candidate node ids, the last executed wins), see "Answer of a run"; not with `Answer::Merged`, `answerResponse()` or a node `response()` |
+| `answerFrom(array ...$entries)` | Answer of a successful run from named entries of the end of the run (candidate node ids, the last executed wins), see "Answer of a run"; or ONE named entry `[Node::class => 'outcomeName', ...]` that marks the answer with `@outcome`; not with `Answer::Merged`, `answerResponse()` or a node `response()` |
 | `answer(Answer $answer)` | **Deprecated** (use `answerFrom()`). Form of the response of a successful run: `Answer::LastNode` (default) or `Answer::Merged` |
 | `loopLimit(int $loopLimit)` | Maximum node steps of one run (default `ProcessDefinition::DEFAULT_LOOP_LIMIT` = 100, minimum 1) |
 | `ruleMode(string $node, RuleMode $mode)` | `RuleMode::Guard` or `RuleMode::Decision` for a rule node |
@@ -352,6 +353,28 @@ $definition = ProcessDefinition::for(PlaceOrder::class, 'PlaceOrder')
 ```
 
 A value that is not an array or an object travels in a one-field array (`NodeResult::ok(['active' => true])`).
+
+**Named outcomes (`@outcome`).** A process with several ends can name them. `answerFrom()` takes ONE entry that maps each candidate node (unique) to the name of the outcome it ends the run with; a name may repeat. The candidate that ran last gives its data as before, and its name reaches the answer as the FIRST property `@outcome` (`MarkOutcome::KEY`, the same literal as `ProjectOutcome::KEY` of `jardissupport/response`; the two packages share no port, they agree on the literal).
+
+```php
+$definition = ProcessDefinition::for(PlaceOrder::class, 'PlaceOrder')
+    ->answerFrom([Confirm::class => 'confirmed', Postpone::class => 'postponed', Reject::class => 'postponed'])
+    ->node(Check::class)->onTrue(Confirm::class)->onFalse(Postpone::class)->onSkip(Reject::class)
+    ->node(Confirm::class)->terminal()
+    ->node(Postpone::class)->terminal()
+    ->node(Reject::class)->terminal()
+    ->build();
+// Confirm ran last, its data ['orderNo' => 'O-1']: {"@outcome":"confirmed","orderNo":"O-1"}
+// Postpone ran last, no data:                       {"@outcome":"postponed"}
+```
+
+- The named entry is the only entry of the declaration. Any further entry next to it (named or a list), a name that is not a non-empty string, and a key that is no declared node are refused at `build()` with a `ConstructionException`.
+- The list form is unchanged: without a name the answer carries no `@outcome`.
+- A candidate that is named but did not run is no error; the name of the candidate that ran last is used.
+- If none of the named candidates ran, the run throws a `ConstructionException` (`FindOutcome`).
+- The marker is the package's own: a step field named `@outcome` does not survive, the marker wins and nothing is thrown.
+- `getAnswerFrom()` returns the list form as before (`list<list<string>>`) and, for a named declaration, the map as declared (`array<string, string>`); tell the two apart by `array_is_list()`.
+- Closures: `Handler\Outcome\MarkOutcome` (`(object $answer, string $outcome): object`) sets the marker, `Handler\Outcome\FindOutcome` (`(ProcessContext $context, array $named): string`) finds the name of the candidate that ran last; `BuildOutcome` composes them for a named declaration.
 
 **Deprecated forms.** `answer(Answer)`, `answerResponse()` and the node `response()` are `@deprecated` since 5.1 (behaviour unchanged); the section below describes them as they work.
 
