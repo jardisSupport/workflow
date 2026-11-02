@@ -29,8 +29,7 @@ final class FindOutcome
         }
 
         throw new ConstructionException(sprintf(
-            'Answer entry %d (%s) was not given: none of its nodes ran',
-            1,
+            'Outcome was not found: none of the candidate nodes (%s) ran',
             implode(', ', array_keys($named))
         ));
     }
