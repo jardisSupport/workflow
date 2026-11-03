@@ -19,8 +19,8 @@ Process engine for one request-response use case in PHP. A process is a declared
 - **Declarative graph** — `ProcessDefinition` describes nodes, routes (`onTrue`/`onFalse`/`onSkip`/`onTimeout`/`onCancel`/`onExit`), terminal ends, loop limit and per-node declarations; frozen by `build()`
 - **Three node kinds** — Action (your code), Call (a command, query or sub-process), Rule (a business check); all share one contract: `callable(ProcessContext): NodeResult`
 - **Reject instead of route** — `NodeResult::reject()` ends the run at once with a 4xx; it is not a route
-- **Two answer forms** — `Answer::LastNode` (default: the data of the last step) or `Answer::Merged` (the data of all steps united), declared per process
-- **Typed answers** — every node can declare a response class
+- **Answer from the end** — `answerFrom([...])` names where the answer of a successful run comes from (`Answer::LastNode`/`Answer::Merged` deprecated since 5.1)
+- **Typed call answers** — a call node maps a 2xx onto a class with `MapResponseInto` (node `response()` deprecated since 5.1)
 - **Named outcomes** — `answerFrom([Node::class => 'outcomeName', ...])` marks the answer with the outcome that ended the run, as its first property `@outcome`
 - **Events at the result** — events travel with the `NodeResult`; the caller publishes them after the commit
 - **Immutable chain** — `ProcessContext` exposes input and the results of the nodes run so far
@@ -48,7 +48,7 @@ Requires PHP 8.3+ and `jardissupport/contracts` ^2.12 (`ResponseStatus`, `Domain
 | Route | `Route::OnTrue` / `OnFalse` (yes/no), `OnSkip`, `OnTimeout`, `OnCancel`, `OnExit`. Routes carry no data |
 | Reject | `NodeResult::reject(4xx, ...)`. Not a route: the run ends and the outcome carries the status, the message key, the context and the errors of the reject |
 | End | Declared with `terminal()` (a route mapped to `null`) |
-| Answer | The form of the response of a successful run, declared with `answer(Answer)`: the last step or all steps united |
+| Answer | What the response of a successful run is made of, declared with `answerFrom(...)`: named entries from the end of the run, optionally marked with the outcome (`@outcome`). Deprecated since 5.1: `answer(Answer)` (the last step or all steps united) |
 | Door | Everything in front of and around the engine: input check, transaction, failure forms, logging. Not part of this package |
 
 ---
@@ -144,7 +144,7 @@ final class ConfirmOrder
 ```php
 $definition = ProcessDefinition::for(PlaceOrder::class, 'PlaceOrder')
     ->context(CheckoutContext::class)
-    ->answer(Answer::Merged)
+    ->answerFrom([ConfirmOrder::class => 'confirmed'])
     ->node(CheckCredit::class)->onTrue(ReserveStock::class)
         ->rejects(ResponseStatus::RuleViolation, 'order.creditExceeded')
     ->node(ReserveStock::class)->onTrue(ConfirmOrder::class)
@@ -152,7 +152,7 @@ $definition = ProcessDefinition::for(PlaceOrder::class, 'PlaceOrder')
     ->build();
 ```
 
-The first `node()` is the entry node. `onTrue(...)` and friends, `terminal()`, `rejects()`, `input()` and `response()` apply to the node declared last. After `build()` every mutator throws a `ConstructionException`.
+The first `node()` is the entry node. `onTrue(...)` and friends, `terminal()`, `rejects()`, `input()` and the deprecated `response()` apply to the node declared last. After `build()` every mutator throws a `ConstructionException`.
 
 ### Run
 
@@ -169,7 +169,7 @@ $nodeFactory = static fn(string $class): object => match ($class) {
 $outcome = $runner->run($definition, new PlaceOrder('ACME', 2), $nodeFactory);
 
 $outcome->status();   // ResponseStatus::Success (200)
-$outcome->response(); // {sku: 'A-1', qty: 2, orderNo: 'O-A-1', status: 'confirmed'} - all steps united (Answer::Merged)
+$outcome->response(); // {"@outcome": "confirmed", orderNo: 'O-A-1', status: 'confirmed'} - the data of ConfirmOrder, marked with its outcome
 $outcome->events();   // [OrderPlaced {orderNo: 'O-A-1'}]
 
 $rejected = $runner->run($definition, new PlaceOrder('ACME', 500), $nodeFactory);
