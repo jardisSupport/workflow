@@ -1,12 +1,16 @@
 ---
 name: support-workflow
-description: jardissupport/workflow 5.2 - the process engine for one request-response use case, and nothing around it. Declare a node graph with ProcessDefinition, run it with ProcessRunner (no constructor), get a typed ProcessOutcome; NodeResult (ok, route, reject, withEvents), ProcessContext, answer from the end of the run (answerFrom, BuildAnswer), named outcomes (answerFrom map, @outcome, MarkOutcome, FindOutcome), deprecated answer form Answer (LastNode, Merged), MapResponse and MapResponseInto (typed reference) for call and sub-process nodes, reject outcome (status, messageKey, context, errors), loops. Validation, transaction, failure forms, envelope data and logging are the door's business (jardissupport/response). Use when working with ProcessRunner, ProcessDefinition, NodeResult, ProcessContext, Answer, answerFrom, MapResponse, MapResponseInto or jardissupport/workflow.
+description: "jardissupport/workflow 5.2 - the process engine for one request-response use case: ProcessDefinition, ProcessRunner, NodeResult, named outcomes, MapResponse. Use when declaring a node graph, running it, or working with answerFrom, reject outcomes, ProcessContext."
 user-invocable: false
 zone: post-active
 persona: C
 prerequisites: [foundation-architecture, foundation-patterns]
 next: [generated-code-workflow-api, support-response]
 ---
+
+## Triggers
+
+jardissupport/workflow 5.2 - the process engine for one request-response use case, and nothing around it. Declare a node graph with ProcessDefinition, run it with ProcessRunner (no constructor), get a typed ProcessOutcome; NodeResult (ok, route, reject, withEvents), ProcessContext, answer from the end of the run (answerFrom, BuildAnswer), named outcomes (answerFrom map, @outcome, MarkOutcome, FindOutcome), deprecated answer form Answer (LastNode, Merged), MapResponse and MapResponseInto (typed reference) for call and sub-process nodes, reject outcome (status, messageKey, context, errors), loops. Validation, transaction, failure forms, envelope data and logging are the door's business (jardissupport/response). Use when working with ProcessRunner, ProcessDefinition, NodeResult, ProcessContext, Answer, answerFrom, MapResponse, MapResponseInto or jardissupport/workflow.
 
 # WORKFLOW_COMPONENT_SKILL
 > `jardissupport/workflow` 5.2 | NS: `JardisSupport\Workflow` | PHP 8.3+ | requires `jardissupport/contracts` ^2.12 only
