@@ -28,13 +28,30 @@
             "on": "onExit"
           }
         }
-      ]
+      ],
+      "gives": {
+        "kind": "value",
+        "name": "probeHealthy",
+        "fields": [
+          {
+            "name": "evaluation",
+            "type": "int"
+          },
+          {
+            "name": "healthy",
+            "type": "bool"
+          }
+        ]
+      }
     },
     {
       "description": "Platzhalter fuer die Wartezeit vor dem naechsten Pruef-Durchlauf.\n",
       "id": "p2",
       "mode": "sync",
-      "name": "WaitBeforeRetry"
+      "name": "WaitBeforeRetry",
+      "gives": {
+        "kind": "nothing"
+      }
     }
   ],
   "edges": [

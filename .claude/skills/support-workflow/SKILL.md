@@ -35,7 +35,7 @@ No input check, no transaction, no logging, no failure forms in the engine: they
 
 ```php
 $definition = ProcessDefinition::for(PlaceOrder::class, 'PlaceOrder')   // input class, name
-    ->context(CheckoutContext::class)->answer(Answer::Merged)
+    ->context(CheckoutContext::class)->answerFrom([ConfirmOrder::class => 'confirmed'])
     ->node(CheckCredit::class)->onTrue(ReserveStock::class)->rejects(ResponseStatus::RuleViolation, 'order.creditExceeded')
     ->node(ReserveStock::class)->onTrue(ConfirmOrder::class)
     ->node(ConfirmOrder::class)->terminal()
@@ -44,7 +44,7 @@ $definition = ProcessDefinition::for(PlaceOrder::class, 'PlaceOrder')   // input
 $runner = new ProcessRunner();                                    // no constructor, no state
 $outcome = $runner->run($definition, new PlaceOrder('ACME', 2), $nodeFactory);
 $outcome->status();   // ResponseStatus::Success
-$outcome->response(); // object: all steps united (Answer::Merged)
+$outcome->response(); // object: {@outcome: 'confirmed', ...data of ConfirmOrder}
 $outcome->events();   // the door publishes these AFTER the commit
 ```
 
@@ -96,7 +96,7 @@ $outcome->events();   // the door publishes these AFTER the commit
 | 3 | `response(class)` needs a value for every required constructor parameter named by the fields (none named = all); missing value or unknown class -> `ConstructionException` | `Context/HydrateResponse.php:54,68` |
 | 4 | `RuleMode::Decision` turns only a 422 into `OnFalse`; a 404 or 409 from the node stays a reject | `Node/ApplyRuleMode.php:33` |
 | 5 | A rejected result drops its events; a run that ends in a reject reports none | `Events/CollectEvents.php:30` |
-| 6 | Nothing is handed on between nodes: `route()` without data is a result without data; with `Answer::LastNode` a last node without data answers an empty object; read earlier answers with `latest($node)` / `all($node)` or declare `Answer::Merged` | `Outcome/BuildOutcome.php` (`response`) |
+| 6 | Nothing is handed on between nodes: `route()` without data is a result without data; with `Answer::LastNode` a last node without data answers an empty object; read earlier answers with `latest($node)` / `all($node)` or name the node in an `answerFrom()` entry (`Answer::Merged` is deprecated since 5.1) | `Outcome/BuildOutcome.php` (`response`) |
 | 7 | `Answer::Merged` needs fields by name: a non-empty list as step data throws `ConstructionException`; `null` and `[]` are fine | `Outcome/BuildOutcome.php` (`merged`) |
 | 8 | `transactional`, `validate`, `requires` are declarations for the door; the engine ignores them | `Data/ProcessDefinition.php` |
 | 9 | The loop limit is checked before the node is built; the exceeding step never runs and `run()` throws | `Loop/GuardLoop.php:30` |
