@@ -4,6 +4,13 @@ All notable changes to `jardissupport/workflow` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [SemVer](https://semver.org/). Releases before 2.2.0 are listed in the git history and the GitHub releases.
 
+## [5.2.1] - 2026-11-03
+
+### Changed
+
+- Docs only, `src/` unchanged: README (feature list, concept table, Quick Start definition and run) and the component skill (example, pitfall 6) now show the answer from the end, `answerFrom([ConfirmOrder::class => 'confirmed'])` with `@outcome`, instead of the deprecated `Answer::Merged`; `.claude/CLAUDE.md` names the named candidates of 5.2 and counts 31 classes.
+- Test fixture `RetryProbeUntilHealthy.json`: every node declares `gives`, the end node `p1` with its outcome name (`probeHealthy`), as the builder process format reads it. The tests load the fixture as before.
+
 ## [5.2.0] - 2026-11-02
 
 ### Added
