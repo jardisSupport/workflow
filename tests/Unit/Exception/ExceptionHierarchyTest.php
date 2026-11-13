@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace JardisSupport\Workflow\Tests\Unit\Exception;
 
 use JardisSupport\Workflow\Exception\ConstructionException;
+use JardisSupport\Workflow\Exception\ExternalFailureException;
 use JardisSupport\Workflow\Exception\LoopLimitExceededException;
 use JardisSupport\Workflow\Exception\UnroutedStatusException;
 use JardisSupport\Workflow\Exception\WorkflowException;
@@ -53,5 +54,16 @@ class ExceptionHierarchyTest extends TestCase
 
         $this->assertSame(100, $e->getLimit());
         $this->assertStringContainsString('100', $e->getMessage());
+    }
+
+    public function testExternalFailureIsAFinalRuntimeExceptionWithStatusAndReason(): void
+    {
+        $e = new ExternalFailureException(403, 'no right');
+
+        $this->assertTrue((new ReflectionClass(ExternalFailureException::class))->isFinal());
+        $this->assertInstanceOf(\RuntimeException::class, $e);
+        $this->assertSame(403, $e->getStatus());
+        $this->assertSame('External operation answered with status 403: no right', $e->getMessage());
+        $this->assertSame('External operation answered with status 500', (new ExternalFailureException(500))->getMessage());
     }
 }

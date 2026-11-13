@@ -4,6 +4,18 @@ All notable changes to `jardissupport/workflow` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [SemVer](https://semver.org/). Releases before 2.2.0 are listed in the git history and the GitHub releases.
 
+## [5.3.0] - 2026-11-13
+
+### Added
+
+- `Handler\Node\MapExternalResponse` (closure, `__invoke(DomainResponseInterface $response, ?Route $onReject = null): NodeResult`): the mapping for the answer of ANOTHER system, a thin envelope around `MapResponse` (injected, default instance). A node never answers 401, 403 or 405, so for a foreign system 401, 403, 405, every 5xx and every status outside `ResponseStatus` are a technical failure and throw an `ExternalFailureException` - even with `$onReject`; every other status (2xx, 400, 404, 409, 422) goes unchanged to `MapResponse`.
+- `Exception\ExternalFailureException` (`final`, `\RuntimeException`, `getStatus()`): status and reason (the foreign error messages) in the message. It does NOT carry the marker `ReportedFailureExceptionInterface`: nobody on this side has reported the cause, so the door answers 500 and logs it. 33 classes.
+- `MapResponseInto` takes the mapping as its constructor parameter: `MapResponse|MapExternalResponse $map = new MapResponse()` (additive, the default is the behaviour of 5.2).
+
+### Fixed
+
+- `MapResponse` no longer throws a `TypeError` for `errors` without list form (a string, an associative object, as `core/app` writes it for a 401/403): the string messages are taken as one list. Lists are flattened as before.
+
 ## [5.2.1] - 2026-11-03
 
 ### Changed

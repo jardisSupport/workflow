@@ -14,7 +14,7 @@ final readonly class FakeDomainResponse implements DomainResponseInterface
 {
     /**
      * @param array<string, mixed> $data
-     * @param array<string, array<int, string>> $errors
+     * @param array<string, array<int, string>|string> $errors errors by field; a string stands for a foreign `errors` without list form
      * @param list<object> $events Domain events, carried under one context key, as the contract keys events by context
      * @param list<object> $internalEvents Internal events (write gesture of an aggregate), same keying
      */

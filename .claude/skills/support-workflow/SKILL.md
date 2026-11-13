@@ -1,6 +1,6 @@
 ---
 name: support-workflow
-description: "jardissupport/workflow 5.2 - the process engine for one request-response use case: ProcessDefinition, ProcessRunner, NodeResult, named outcomes, MapResponse. Use when declaring a node graph, running it, or working with answerFrom, reject outcomes, ProcessContext."
+description: "jardissupport/workflow 5.3 - the process engine for one request-response use case: ProcessDefinition, ProcessRunner, NodeResult, named outcomes, MapResponse, MapExternalResponse. Use when declaring a node graph, running it, or working with answerFrom, reject outcomes, ProcessContext."
 user-invocable: false
 zone: post-active
 persona: C
@@ -10,14 +10,14 @@ next: [generated-code-workflow-api, support-response]
 
 ## Triggers
 
-jardissupport/workflow 5.2 - the process engine for one request-response use case, and nothing around it. Declare a node graph with ProcessDefinition, run it with ProcessRunner (no constructor), get a typed ProcessOutcome; NodeResult (ok, route, reject, withEvents), ProcessContext, answer from the end of the run (answerFrom, BuildAnswer), named outcomes (answerFrom map, @outcome, MarkOutcome, FindOutcome), deprecated answer form Answer (LastNode, Merged), MapResponse and MapResponseInto (typed reference) for call and sub-process nodes, reject outcome (status, messageKey, context, errors), loops. Validation, transaction, failure forms, envelope data and logging are the door's business (jardissupport/response). Use when working with ProcessRunner, ProcessDefinition, NodeResult, ProcessContext, Answer, answerFrom, MapResponse, MapResponseInto or jardissupport/workflow.
+jardissupport/workflow 5.3 - the process engine for one request-response use case, and nothing around it. Declare a node graph with ProcessDefinition, run it with ProcessRunner (no constructor), get a typed ProcessOutcome; NodeResult (ok, route, reject, withEvents), ProcessContext, answer from the end of the run (answerFrom, BuildAnswer), named outcomes (answerFrom map, @outcome, MarkOutcome, FindOutcome), deprecated answer form Answer (LastNode, Merged), MapResponse, MapExternalResponse (answer of another system) and MapResponseInto (typed reference) for call and sub-process nodes, reject outcome (status, messageKey, context, errors), loops. Validation, transaction, failure forms, envelope data and logging are the door's business (jardissupport/response). Use when working with ProcessRunner, ProcessDefinition, NodeResult, ProcessContext, Answer, answerFrom, MapResponse, MapResponseInto or jardissupport/workflow.
 
 # WORKFLOW_COMPONENT_SKILL
-> `jardissupport/workflow` 5.2 | NS: `JardisSupport\Workflow` | PHP 8.3+ | requires `jardissupport/contracts` ^2.12 only
+> `jardissupport/workflow` 5.3 | NS: `JardisSupport\Workflow` | PHP 8.3+ | requires `jardissupport/contracts` ^2.12 only
 
 ## Usage essentials
 
-**Trigger:** ProcessRunner, ProcessDefinition, NodeResult, ProcessContext, ProcessOutcome, Answer, Answer::Merged, answerFrom, getAnswerFrom, BuildAnswer, MarkOutcome, FindOutcome, @outcome, MapResponse, MapResponseInto, RuleMode, LoopLimitExceededException, UnroutedStatusException.
+**Trigger:** ProcessRunner, ProcessDefinition, NodeResult, ProcessContext, ProcessOutcome, Answer, Answer::Merged, answerFrom, getAnswerFrom, BuildAnswer, MarkOutcome, FindOutcome, @outcome, MapResponse, MapExternalResponse, ExternalFailureException, MapResponseInto, RuleMode, LoopLimitExceededException, UnroutedStatusException.
 
 ```
 ProcessRunner::run($definition, $input, $nodeFactory, int $depth = 0)
@@ -67,7 +67,8 @@ $outcome->events();   // the door publishes these AFTER the commit
 | `ProcessOutcome` | `status response errors events messageKey context`, `isFailed()` (status >= 400), `withResponse(object): self` (a copy with another answer, every other field unchanged; the outcome stays immutable) |
 | `MapResponse` | `__invoke(DomainResponseInterface, ?Route $onReject = null): NodeResult` (2xx ok + the Domain events of the callee flattened (Internal events stay behind); 4xx reject with the callee's plain context - `@type` dropped, inner `context` lifted, 400 `fields` / 409 `reason aggregate violated` / 422 `rule` kept; callee key only for 422; other 4xx e.g. 401/403: data unchanged as context; `$onReject` routes a 4xx instead; else throws: a 5xx a `CalleeFailureException` carrying the marker `ReportedFailureExceptionInterface`, any other status a plain `\RuntimeException`) |
 
-| `MapResponseInto` (`Handler/Node`) | `__construct(MapResponse $map = new MapResponse())`, `__invoke(DomainResponseInterface, string $into, ?Route $onReject = null): NodeResult`: everything of `MapResponse` (events, 4xx reject, `$onReject`, 5xx throws); a 2xx becomes an object of `$into`: class with constructor -> `ConstructResponse`; without -> its PUBLIC properties (iterated on the class side: `@type`/`id` and other extra keys fall away; a property without default needs a key); missing key, wrong type (also at a constructor), `readonly` property, unknown or not instantiable class -> `ConstructionException` |
+| `MapExternalResponse` (`Handler/Node`, 5.3) | `__construct(MapResponse $map = new MapResponse())`, `__invoke(DomainResponseInterface, ?Route $onReject = null): NodeResult`: for the answer of ANOTHER system. 401, 403, 405, every 5xx and every status outside `ResponseStatus` -> `ExternalFailureException` (status + reason in the message, NO marker `ReportedFailureExceptionInterface`, so the door answers 500 and logs it; `$onReject` never acts on it); every other status (2xx, 400, 404, 409, 422) is exactly `MapResponse` |
+| `MapResponseInto` (`Handler/Node`) | `__construct(MapResponse\|MapExternalResponse $map = new MapResponse())`, `__invoke(DomainResponseInterface, string $into, ?Route $onReject = null): NodeResult`: everything of `MapResponse` (events, 4xx reject, `$onReject`, 5xx throws); a 2xx becomes an object of `$into`: class with constructor -> `ConstructResponse`; without -> its PUBLIC properties (iterated on the class side: `@type`/`id` and other extra keys fall away; a property without default needs a key); missing key, wrong type (also at a constructor), `readonly` property, unknown or not instantiable class -> `ConstructionException` |
 
 ## Full reference
 
@@ -81,7 +82,7 @@ $outcome->events();   // the door publishes these AFTER the commit
 
 **Reject in the outcome.** Status = the 4xx, empty `response()`, `errors()` of the reject, no events, `messageKey()` = the key the node declared with `rejects(status, key)`, else the one the reject names, `context()` = the reject context. With `input(property)` on the node, a 400 reject prefixes its `fields[].field` with `<property>.`; other statuses unchanged (`BuildOutcome.php:45-46`, `prefixed`). The failure form and the wire envelope are built by the door.
 
-**What the engine throws.** `ConstructionException` (not callable node, bad context class, unhydratable response, merged list, built definition changed), `UnroutedStatusException` (route without declared key), `LoopLimitExceededException` (`getLimit()`), `CalleeFailureException` from `MapResponse` on a 5xx (a `\RuntimeException` carrying the marker `ReportedFailureExceptionInterface`: the cause was already reported by the inner door, so the door does not log it again), a plain `\RuntimeException` on any other status without a node meaning; a node's own exceptions pass through. The engine answers no 500 and no 409: the door maps the throwables.
+**What the engine throws.** `ConstructionException` (not callable node, bad context class, unhydratable response, merged list, built definition changed), `UnroutedStatusException` (route without declared key), `LoopLimitExceededException` (`getLimit()`), `CalleeFailureException` from `MapResponse` on a 5xx (a `\RuntimeException` carrying the marker `ReportedFailureExceptionInterface`: the cause was already reported by the inner door, so the door does not log it again), a plain `\RuntimeException` on any other status without a node meaning, `ExternalFailureException` from `MapExternalResponse` (a `\RuntimeException` WITHOUT the marker: 401, 403, 405, 5xx or a status outside the contract of another system; the door logs it and answers 500); a node's own exceptions pass through. The engine answers no 500 and no 409: the door maps the throwables.
 
 **Sub-process.** The engine knows none: a node runs the inner process with `depth + 1` through the inner door and hands the `DomainResponseInterface` it answers to `(new MapResponse())($answer, $onReject)`: events travel up, an inner 4xx is rejected again with the same status or routed with `$onReject`.
 
@@ -112,6 +113,7 @@ $outcome->events();   // the door publishes these AFTER the commit
 | 15 | `answerFrom()` is refused at `build()` with `Answer::Merged`, `answerResponse()` or a node `response()`; an entry no executed step gives, a list/scalar as step data and a field name given twice throw `ConstructionException` at the end of the run | `Data/ProcessDefinition.php` (`assertAnswerFrom`), `Outcome/BuildAnswer.php` |
 | 16 | `MapResponseInto` without a constructor fills only PUBLIC properties; a `readonly` property or a missing key (no default) throws `ConstructionException`, never a default `''`; a 4xx is exactly `MapResponse`'s answer (the object is built for a 2xx only, also with `$onReject = OnTrue`) | `Handler/Node/MapResponseInto.php` |
 | 17 | A named `answerFrom()` is the only entry of the declaration; mixing it with a list entry or a second entry is refused at `build()`; without a name the answer has no `@outcome` | `Data/ProcessDefinition.php` (`assertAnswerFrom`), `Outcome/MarkOutcome.php`, `Outcome/FindOutcome.php` |
+| 18 | `MapResponse` turns a foreign 401/403 into a reject; for a call to ANOTHER system use `MapExternalResponse` (a node never answers 403: the other system's 401/403/405 are technical failures, `ExternalFailureException`, no marker); `MapResponse` takes `errors` of any shape without a `TypeError` | `Handler/Node/MapExternalResponse.php`, `Handler/Node/MapResponse.php` |
 
 ## Layer rules
 

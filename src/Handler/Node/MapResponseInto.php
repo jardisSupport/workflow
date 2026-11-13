@@ -15,15 +15,21 @@ use JardisSupport\Workflow\Handler\Context\ConstructResponse;
  * of the given class (the typed reference of the call).
  *
  * The status mapping, the Domain events and the reject are those of {@see MapResponse} (injected, so there is one
- * mapping). Only a 2xx changes: a class with a constructor is built by {@see ConstructResponse}; a class without
- * one is filled through its PUBLIC properties, iterated on the class side, so keys the class does not know
- * (`@type`, `id`, ...) fall away. A property without a default needs a value in the data. A missing key, a value of
- * the wrong type, a `readonly` property, an unknown or not instantiable class is a {@see ConstructionException}.
+ * mapping; for the answer of another system {@see MapExternalResponse} is injected instead and throws its
+ * technical failures before any object is built). Only a 2xx changes: a class with a constructor is built by
+ * {@see ConstructResponse}; a class without one is filled through its PUBLIC properties, iterated on the class
+ * side, so keys the class does not know (`@type`, `id`, ...) fall away. A property without a default needs a value
+ * in the data. A missing key, a value of the wrong type, a `readonly` property, an unknown or not instantiable class
+ * is a {@see ConstructionException}.
  * A 4xx or the route of `$onReject` stays exactly what MapResponse answers.
  */
 final class MapResponseInto
 {
-    public function __construct(private readonly MapResponse $map = new MapResponse())
+    /**
+     * @param MapResponse|MapExternalResponse $map the status mapping: {@see MapResponse} for the answer of an own
+     *        domain (default), {@see MapExternalResponse} for the answer of another system
+     */
+    public function __construct(private readonly MapResponse|MapExternalResponse $map = new MapResponse())
     {
     }
 
@@ -32,6 +38,8 @@ final class MapResponseInto
      * @throws ConstructionException when the data does not fit the class
      * @throws \JardisSupport\Workflow\Exception\CalleeFailureException on a 5xx
      * @throws \RuntimeException on any other status without a node meaning
+     * @throws \JardisSupport\Workflow\Exception\ExternalFailureException when the mapping is
+     *         {@see MapExternalResponse} and the status is a technical failure
      */
     public function __invoke(DomainResponseInterface $response, string $into, ?Route $onReject = null): NodeResult
     {
