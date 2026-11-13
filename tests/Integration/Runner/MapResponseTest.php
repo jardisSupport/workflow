@@ -138,6 +138,31 @@ class MapResponseTest extends RunnerTestCase
         $this->assertSame('A-1', $result->context()['orderRef']);
     }
 
+    /**
+     * @return array<string, array{array<string, array<int, string>|string>, list<string>}>
+     */
+    public static function errorShapes(): array
+    {
+        return [
+            'a string per field' => [['message' => 'token missing'], ['token missing']],
+            'a list per field and a string' => [['a' => ['x', 'y'], 'message' => 'z'], ['x', 'y', 'z']],
+            'no errors' => [[], []],
+            'an empty list' => [['a' => []], []],
+        ];
+    }
+
+    /**
+     * @param array<string, array<int, string>|string> $errors
+     * @param list<string> $expected
+     */
+    #[DataProvider('errorShapes')]
+    public function testErrorsWithoutListFormDoNotThrowATypeError(array $errors, array $expected): void
+    {
+        $result = (new MapResponse())(new FakeDomainResponse(404, [], $errors));
+
+        $this->assertSame($expected, $result->errors());
+    }
+
     public function testRejectWithoutAKeyFromTheCalleeHasAnEmptyKey(): void
     {
         $result = (new MapResponse())(new FakeDomainResponse(403));

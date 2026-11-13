@@ -21,6 +21,7 @@ Process engine for one request-response use case in PHP. A process is a declared
 - **Reject instead of route** — `NodeResult::reject()` ends the run at once with a 4xx; it is not a route
 - **Answer from the end** — `answerFrom([...])` names where the answer of a successful run comes from (`Answer::LastNode`/`Answer::Merged` deprecated since 5.1)
 - **Typed call answers** — a call node maps a 2xx onto a class with `MapResponseInto` (node `response()` deprecated since 5.1)
+- **Answers of another system** — `MapExternalResponse` (5.3) turns 401, 403, 405, a 5xx and a status outside the contract into a technical failure (`ExternalFailureException`), never a reject; every other status is `MapResponse`
 - **Named outcomes** — `answerFrom([Node::class => 'outcomeName', ...])` marks the answer with the outcome that ended the run, as its first property `@outcome`
 - **Events at the result** — events travel with the `NodeResult`; the caller publishes them after the commit
 - **Immutable chain** — `ProcessContext` exposes input and the results of the nodes run so far
@@ -281,9 +282,15 @@ $result->messageKey(); // ''
 $result->context();    // ['sku' => 'Z-9']
 ```
 
+### Answers of another system (`MapExternalResponse`, 5.3)
+
+A call across a domain boundary answers with the status of ANOTHER system, and a node never answers 401, 403 or 405: for the foreign system those are a technical failure (wrong key, missing right, wrong verb), not a refusal of the node. `MapExternalResponse` is a thin envelope around `MapResponse`: `(new MapExternalResponse())($response, $onReject)` throws an `ExternalFailureException` for 401, 403, 405, every 5xx and every status outside `ResponseStatus` (302, 418, ...); every other status (2xx, 400, 404, 409, 422) goes unchanged to `MapResponse`. The exception carries the status (`getStatus()`) and the reason (the foreign error messages, whatever shape its `errors` has) in its message, and it does **not** carry the marker `ReportedFailureExceptionInterface`: nobody on this side has reported the cause, so the door answers 500 and logs it. `$onReject` never acts on a technical failure.
+
+`MapResponse` itself no longer throws a `TypeError` for `errors` without list form (a string, an associative object): the string messages are taken as one list; lists are flattened as before.
+
 ### Typed reference of a call (`MapResponseInto`)
 
-`MapResponseInto` maps the answer of a call like `MapResponse` (status mapping, Domain events, reject, `$onReject`) and turns the data of a 2xx into an object of a class: `(new MapResponseInto())($response, ReferenceClass::class, $onReject)`. A class with a constructor is built through it (`ConstructResponse`); a class **without** one is filled through its **public properties** - keys the class does not know (`@type`, `id`) fall away. A missing key (a property with a default needs none), a value of the wrong type, a `readonly` property, an unknown or not instantiable class throws a `ConstructionException`. A 4xx, the `$onReject` route and a 5xx are exactly what `MapResponse` answers.
+`MapResponseInto` maps the answer of a call like `MapResponse` (status mapping, Domain events, reject, `$onReject`) and turns the data of a 2xx into an object of a class: `(new MapResponseInto())($response, ReferenceClass::class, $onReject)`. A class with a constructor is built through it (`ConstructResponse`); a class **without** one is filled through its **public properties** - keys the class does not know (`@type`, `id`) fall away. A missing key (a property with a default needs none), a value of the wrong type, a `readonly` property, an unknown or not instantiable class throws a `ConstructionException`. A 4xx, the `$onReject` route and a 5xx are exactly what `MapResponse` answers. The mapping is injectable: `new MapResponseInto(new MapExternalResponse())` types the 2xx of another system's answer and throws its technical failures before any object is built (default: `new MapResponse()`).
 
 ### Sub-process nodes
 

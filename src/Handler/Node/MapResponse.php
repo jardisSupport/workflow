@@ -24,7 +24,8 @@ use JardisSupport\Workflow\Exception\CalleeFailureException;
  * rather than refuse. The callee's message key travels only where its form carries one (422); for 400, 404 and
  * 409 it is left to the node's declaration ({@see \JardisSupport\Workflow\Data\ProcessDefinition::rejects()}).
  * Any other 4xx (401, 403, ...) has no form: its data passes through unchanged as the context, a key in it
- * stays where it is. The callee's error messages are flattened into one list, their field keys are dropped.
+ * stays where it is. The callee's error messages are flattened into one list, their field keys are dropped; an
+ * `errors` that is no list (a string, an associative object) does not throw, its string messages are taken.
  * Every other status is a technical failure and throws; so is a 5xx even with `$onReject`. A 5xx throws a
  * {@see CalleeFailureException}, which carries the marker "cause already reported" because the inner door has
  * logged it; any other status throws a plain `\RuntimeException`.
@@ -60,8 +61,28 @@ final class MapResponse
             $reject,
             $this->messageKey($reject, $data),
             $this->context($reject, $data),
-            array_merge([], ...array_values($response->getErrors()))
+            $this->messages($response->getErrors())
         );
+    }
+
+    /**
+     * The error messages of the callee as one list, field keys dropped. A list of messages per field is flattened as
+     * before; a value that is not a list (a string, an associative object) contributes its string messages instead of
+     * throwing a TypeError.
+     *
+     * @param array<array-key, mixed> $errors
+     * @return list<string>
+     */
+    private function messages(array $errors): array
+    {
+        $messages = [];
+        array_walk_recursive($errors, static function (mixed $message) use (&$messages): void {
+            if (is_scalar($message)) {
+                $messages[] = (string) $message;
+            }
+        });
+
+        return $messages;
     }
 
     /**
