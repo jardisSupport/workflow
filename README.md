@@ -198,7 +198,7 @@ $rejected->response();   // empty object, the failure form is the door's busines
 | `node(string $node)` | Declare a node and make it the current one |
 | `onTrue` / `onFalse` / `onSkip` / `onTimeout` / `onCancel` / `onExit` `(?string $target)` | Route of the current node; `null` declares a terminal end |
 | `terminal(Route ...$routes)` | Terminal end for the given routes (none given: `onTrue`) |
-| `rejects(ResponseStatus $status, string $messageKey)` | Declare a 4xx the current node may reject with and the message key it answers for that status (non-4xx throws) |
+| `rejects(ResponseStatus $status, string $messageKey)` | Declare a 4xx the current node may reject with and the message key it answers for that status (non-4xx throws); several keys for one status are an allow list: the reject's own key stands when it is among them, else the first declared one |
 | `input(string $property)` | Name the process input property that feeds the current node; its 400 rejects answer field paths below it |
 | `response(string $responseClass, string ...$fields)` | **Deprecated** (use `MapResponseInto` in the node). Typed answer of the current node, see below |
 | `answerResponse(string $responseClass, string ...$fields)` | **Deprecated** (use `answerFrom()`). Typed answer of the whole process, only with `Answer::Merged`, see "Answer of a run" |
@@ -420,7 +420,7 @@ $definition = ProcessDefinition::for(CreateQuote::class, 'CreateQuote')
 
 A node that needs the answer of an earlier node reads it explicitly through `ProcessContext::latest($node)` / `all($node)` (the typed getters of a generated context do exactly that); `previous()` is the result of the node run last, which can be a node without data. A reject is unaffected by the answer form: it ends the run with its status, message key, context and errors.
 
-**Reject in the outcome.** A rejected run answers `status()` = the 4xx, an empty `response()`, `errors()` of the reject, no events, `messageKey()` and `context()`. The message key is the one the node declared for that status with `rejects(status, key)`, else the one the reject names. A 400 reject of a node fed by one input property (`input('customer')`) answers its field paths below that property (`customer.<field>`). Turning the outcome into a failure form (`ValidationFailure`, `NotFound`, `Conflict`, `RuleViolation`) is the business of the door.
+**Reject in the outcome.** A rejected run answers `status()` = the 4xx, an empty `response()`, `errors()` of the reject, no events, `messageKey()` and `context()`. The message key is the one the node declared for that status with `rejects(status, key)`, else the one the reject names; with several keys declared for one status the reject's own key stands when it is among them, otherwise the first declared one answers. A 400 reject of a node fed by one input property (`input('customer')`) answers its field paths below that property (`customer.<field>`). Turning the outcome into a failure form (`ValidationFailure`, `NotFound`, `Conflict`, `RuleViolation`) is the business of the door.
 
 ## Events
 

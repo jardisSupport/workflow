@@ -4,6 +4,12 @@ All notable changes to `jardissupport/workflow` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [SemVer](https://semver.org/). Releases before 2.2.0 are listed in the git history and the GitHub releases.
 
+## [5.4.0] - 2026-11-14
+
+### Changed
+
+- Several `rejects()` keys of one status on a node are an allow list: a rejected run answers the `messageKey` of the rejecting step when it is among the declared keys of that status; any other key is replaced by the first declared one, as before. A single declared key behaves unchanged.
+
 ## [5.3.0] - 2026-11-13
 
 ### Added
