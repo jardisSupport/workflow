@@ -24,8 +24,10 @@ use JardisSupport\Workflow\Handler\Context\ConstructResponse;
  * execution order.
  * Reject: only the status, the message key, the context and the errors of the rejecting step, an empty
  * response object, no events; the failure form is the door's business.
- * The message key is the one the node declared for that status ({@see ProcessDefinition::rejects()})
- * or, when it declared none, the one the reject carries. A 400 below a declared input property
+ * The message key is the one the node declared for that status ({@see ProcessDefinition::rejects()});
+ * with several keys declared for one status they are an allow list: the key the reject carries stands when it is
+ * among them, any other is replaced by the first declared one. When the node declared none, the one the reject
+ * carries stands. A 400 below a declared input property
  * ({@see ProcessDefinition::input()}) answers its field paths below that property.
  */
 final class BuildOutcome
@@ -42,13 +44,14 @@ final class BuildOutcome
         $status = $last->status();
         if ($last->isRejected() && $status !== null) {
             $node = $this->lastNode($context);
+            $rejectKey = (string) $last->messageKey();
 
             return new ProcessOutcome(
                 $status,
                 new \stdClass(),
                 $last->errors(),
                 [],
-                $this->declaredKey($definition, $node, $status) ?? (string) $last->messageKey(),
+                $this->declaredKey($definition, $node, $status, $rejectKey) ?? $rejectKey,
                 $this->prefixed($status, $last->context(), $definition?->getInput($node))
             );
         }
@@ -62,17 +65,27 @@ final class BuildOutcome
     }
 
     /**
-     * The message key the node declared for the status; null when the node declared none.
+     * The message key the node declared for the status; null when the node declared none. Several keys of one
+     * status are an allow list: the key of the rejecting step stands when it is among them, else the first one.
      */
-    private function declaredKey(?ProcessDefinition $definition, string $node, ResponseStatus $status): ?string
-    {
+    private function declaredKey(
+        ?ProcessDefinition $definition,
+        string $node,
+        ResponseStatus $status,
+        string $rejectKey
+    ): ?string {
+        $keys = [];
         foreach ($definition?->getRejects($node) ?? [] as $reject) {
             if ($reject['status'] === $status) {
-                return $reject['messageKey'];
+                $keys[] = $reject['messageKey'];
             }
         }
 
-        return null;
+        if ($keys === []) {
+            return null;
+        }
+
+        return in_array($rejectKey, $keys, true) ? $rejectKey : $keys[0];
     }
 
     private function lastNode(ProcessContext $context): string

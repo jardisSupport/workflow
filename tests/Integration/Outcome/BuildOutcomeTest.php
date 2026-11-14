@@ -55,6 +55,34 @@ class BuildOutcomeTest extends RunnerTestCase
         $this->assertSame('declared.clash', $outcome->messageKey());
     }
 
+    public function testSeveralDeclaredKeysOfOneStatusAreAnAllowList(): void
+    {
+        $definition = ProcessDefinition::for('In', 'P')
+            ->node(self::NODE)
+            ->rejects(ResponseStatus::RuleViolation, 'declared.first')
+            ->rejects(ResponseStatus::RuleViolation, 'declared.second')
+            ->terminal()
+            ->build();
+
+        $outcome = $this->rejectWith($definition, NodeResult::reject(ResponseStatus::RuleViolation, 'declared.second'));
+
+        $this->assertSame('declared.second', $outcome->messageKey());
+    }
+
+    public function testUndeclaredKeyAmongSeveralDeclaredOnesFallsBackToTheFirst(): void
+    {
+        $definition = ProcessDefinition::for('In', 'P')
+            ->node(self::NODE)
+            ->rejects(ResponseStatus::RuleViolation, 'declared.first')
+            ->rejects(ResponseStatus::RuleViolation, 'declared.second')
+            ->terminal()
+            ->build();
+
+        $outcome = $this->rejectWith($definition, NodeResult::reject(ResponseStatus::RuleViolation, 'p.other'));
+
+        $this->assertSame('declared.first', $outcome->messageKey());
+    }
+
     public function testRejectKeyStandsWhenTheDeclarationIsForAnotherStatus(): void
     {
         $definition = ProcessDefinition::for('In', 'P')
